@@ -25,11 +25,11 @@ public class Script
 			["Light"] = "Light",
 			["Dark"] = "Default,Dark" // Default=Dark is a weird concept introduced by lightweight styling...
 		};
-
+		Specialized.ListThemes();
 		//Specialized.ListExposedThemeV2Styles();
 		//Specialized.ListExposedCupertinoStyles();
 		//Specialized.ListExposedToolkitV2Styles();
-		Specialized.DiffThemeV2InnerResources();
+		//Specialized.DiffThemeToolkitV2InnerResources();
 		//Specialized.CheckLightWeightResourceParity(@"D:\code\uno\platform\Uno.Themes\src/library/Uno.Material/Styles/Controls/v2/NavigationView.xaml");
 
 		/*var additionalResources = new[]
@@ -291,7 +291,7 @@ public class Script
 			}
 
 			var _resources = (ResourceDictionary)ScuffedXamlParser.Load(@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\_Resources.xaml");
-			var implicitStyles = _resources.Values.OfStaticResourceType<Style>()
+			var implicitStyles = _resources.Values.OfStaticResourceOf<Style>()
 				.Select(x => x.BasedOn)
 #if true // Themes 3.0
 				.Select(x => ((resources[x] as StaticResource)?.Value as Style)?.BasedOn)
@@ -303,7 +303,7 @@ public class Script
 				.ToDictionary(x => x.Key2, x => x.Key)
 				.Dump("Aliases", 0);
 
-			resources.Values.OfStaticResourceType<Style>()
+			resources.Values.OfStaticResourceOf<Style>()
 				.Where(x => x.Key != null)
 				.Where(x => x.Key is string k && !@"
 						MaterialDefault, MaterialBase, 
@@ -340,7 +340,7 @@ public class Script
 			}
 
 			//var styleInfos = ParseGetStyleInfos(@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\MaterialResourcesV2.cs");
-			styles.Values.OfStaticResourceType<Style>()
+			styles.Values.OfStaticResourceOf<Style>()
 				.OrderBy(x => x.TargetType)
 				//.Join(styleInfos, style => style.Key, info => info.ResourceKey, (style, info) => new { Style = style, Info = info })
 				.Where(x => x.Key.StartsWith("Cupertino"))
@@ -381,15 +381,15 @@ public class Script
 							: true
 					);
 				filtered
-					.OfStaticResourceType<Style>()
+					.OfStaticResourceOf<Style>()
 					.Select(x => new { x.Key, x.TargetType })
-					.Dump($"{Path.GetFileNameWithoutExtension(control)}: {filtered.OfStaticResourceType<Style>().Count()} styles", 0);
+					.Dump($"{Path.GetFileNameWithoutExtension(control)}: {filtered.OfStaticResourceOf<Style>().Count()} styles", 0);
 
 				resources.AddRange(filtered);
 			}
 
 			var _common = (ResourceDictionary)ScuffedXamlParser.Load(@"D:\code\uno\platform\Uno.Toolkit\src\library\Uno.Toolkit.Material\Styles\Controls\v2\_Common.xaml");
-			var implicitStyles = _common.Values.OfStaticResourceType<Style>()
+			var implicitStyles = _common.Values.OfStaticResourceOf<Style>()
 				.Select(x => x.BasedOn)
 #if true // Toolkit 4.2
 				//.Select(x => ((resources[x] as StaticResource)?.Value as Style)?.BasedOn)
@@ -401,7 +401,7 @@ public class Script
 				.ToDictionary(x => x.Key2, x => x.Key)
 				.Dump("Aliases", 0);
 
-			resources.Values.OfStaticResourceType<Style>()
+			resources.Values.OfStaticResourceOf<Style>()
 				.Where(x => x.Key != null)
 				.Where(x => x.Key is string k && !@"
 						MaterialDefault, MaterialBase, 
@@ -655,35 +655,74 @@ public class Script
 			};
 		}
 
-		public static void DiffThemeV2InnerResources()
+		public static void ListThemes() // Colors,Opacities,Brushes
 		{
-			// 26ResKey, 30ResKey, Type, Value: Value or 26Val->30Val
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "Button.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "CalendarDatePicker.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "CalendarView.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "CheckBox.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "ComboBox.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "CommandBar.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "ContentDialog.xaml");
-			DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "DatePicker.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "FloatingActionButton.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "Flyout.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "HyperlinkButton.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "ListView.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "NavigationView.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "PasswordBox.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "PipsPager.xaml", "PipsPager.UWP.xaml", "PipsPager.Base.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "ProgressBar.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "ProgressRing.xaml", "ProgressRingWinUI.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "RadioButton.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "Ripple.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "Slider.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "TextBlock.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "TextBox.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "ToggleButton.xaml");
-			//DiffResources(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2", @"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2", "ToggleSwitch.xaml");
-			//ExtractInnerResources((ResourceDictionary)ScuffedXamlParser.Load(@"D:\code\temp\diff_projects\themes@2.6\Styles\Controls\v2\CalendarDatePicker.xaml")).Dump();
-			//ExtractInnerResources(@"D:\code\temp\diff_projects\themes@3.0\Styles\Controls\v2\ProgressRing.xaml").Dump();
+			var palette = (ResourceDictionary)ScuffedXamlParser.Load(@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Application\v2\SharedColorPalette.xaml");
+			palette.Values.OfThemeResource<Color>()
+				.Dump("Colors", 0)
+				.ToCopyableMarkdownTable()
+				.Dump();
+			
+			
+			palette.Values.OfStaticResource<double>()
+				.Dump("Opacities", 0)
+				.ToCopyableMarkdownTable()
+				.Dump();
+			
+			var colors = (ResourceDictionary)ScuffedXamlParser.Load(@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Application\v2\SharedColors.xaml");
+			colors.Values.OfThemeResource<SolidColorBrush>()
+				.MustAll(x => x.AreThemeDefinitionEqual())
+				.Select(x => new
+				{
+					x.Key, Value = (x.LightValue as SolidColorBrush)
+				})
+				.Select(x => new
+				{
+					x.Key,
+					Color = x.Value.GetDP("Color") is StaticResourceRef srColor ? (object)srColor.Key : x.Value.Color,
+					Opacity = x.Value.GetDP("Opacity") is StaticResourceRef srOpacity ? (object)srOpacity.Key : x.Value.Opacity,
+				})
+				.Dump("Brushes", 0)
+				.ToCopyableMarkdownTable()
+				.Dump();
+		}
+		public static void DiffThemeToolkitV2InnerResources()
+		{
+#if false // THEMES
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "Button.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "CalendarDatePicker.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "CalendarView.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "CheckBox.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "ComboBox.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "CommandBar.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "ContentDialog.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "DatePicker.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "FloatingActionButton.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "Flyout.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "HyperlinkButton.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "ListView.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "NavigationView.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "PasswordBox.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "PipsPager.xaml", "PipsPager.UWP.xaml", "PipsPager.Base.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "ProgressBar.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "ProgressRing.xaml", "ProgressRingWinUI.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "RadioButton.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "Ripple.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "Slider.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "TextBlock.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "TextBox.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "ToggleButton.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\themes@{2.6,3.0}\Styles\Controls\v2", "ToggleSwitch.xaml");
+#elif true // TOOLKIT
+			//DiffResources(@"D:\code\temp\diff_projects\toolkit@{3.0,4.2}\src\library\Uno.Toolkit.Material\Styles\Controls\v2\", "Card.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\toolkit@{3.0,4.2}\src\library\Uno.Toolkit.Material\Styles\Controls\v2\", "CardContentControl.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\toolkit@{3.0,4.2}\src\library\Uno.Toolkit.Material\Styles\Controls\v2\", "Chip.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\toolkit@{3.0,4.2}\src\library\Uno.Toolkit.Material\Styles\Controls\v2\", "ChipGroup.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\toolkit@{3.0,4.2}\src\library\Uno.Toolkit.Material\Styles\Controls\v2\", "Divider.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\toolkit@{3.0,4.2}\src\library\Uno.Toolkit.Material\Styles\Controls\v2\", "NavigationBar.xaml");
+			//DiffResources(@"D:\code\temp\diff_projects\toolkit@{3.0,4.2}\src\library\Uno.Toolkit.Material\Styles\Controls\v2\", "TabBar.xaml");
+#endif
+			//ExtractInnerResources((ResourceDictionary)ScuffedXamlParser.Load(@"D:\code\temp\diff_projects\toolkit@4.2\src\library\Uno.Toolkit.Material\Styles\Controls\v2\NavigationBar.xaml")).Dump();
 
 			(string Key, bool Themed, string Value)[] ExtractInnerResources(ResourceDictionary rd)
 			{
@@ -697,14 +736,24 @@ public class Script
 							StaticResource sr => FormatValue(sr.Value),
 							ThemeResource tr => tr.AreThemeDefinitionEqual()
 								? FormatValue(tr.LightValue)
-								: throw new Exception($"Polarized resource: key={x.Key}"),
+								: throw new Exception($"Polarized resource: key={x.Dump().Key}"),
 							_ => throw new ArgumentOutOfRangeException($"Invalid resource dictionary value type: {x.Value.GetType().Name} (key={x.Key})"),
 						}
 					))
 					.ToArray();
 			}
-			void DiffResources(string oldBase, string newBase, params string[] files)
+			void DiffResources(string basePattern, params string[] files)
 			{
+				if (Regex.Match(basePattern, "{.+}") is not { Success: true } match ||
+					!match.Value.TryStripPair("{}", out var args) ||
+					args.Split(',') is not [var oldArg, var newArg])
+				{
+					throw new ArgumentException($"Invalid base pattern: {basePattern}");
+				}
+
+				var oldBase = basePattern[..match.Index] + oldArg + basePattern[(match.Index + match.Length)..];
+				var newBase = basePattern[..match.Index] + newArg + basePattern[(match.Index + match.Length)..];
+
 				var oldResources = ExtractInnerResources(GetResources(oldBase, files));
 				var newResources = ExtractInnerResources(GetResources(newBase, files));
 				var keys = oldResources.Concat(newResources).Select(x => x.Key).ToList();
@@ -719,14 +768,14 @@ public class Script
 						Themed = CompareValue(x.Old?.Themed.ToString(), x.New?.Themed.ToString()),
 						Value = CompareValue(x.Old?.Value, x.New?.Value),
 					})
-					.Dump(Path.GetFileNameWithoutExtension(files.First()))
-					.Where(x => x.OldKey != "- NEWLY ADDED -")
-					.ToCopyableMarkdownTable().Dump()
+					//.Dump(Path.GetFileNameWithoutExtension(files.First()))
+					//.Where(x => x.OldKey != "- NEWLY ADDED -")
+					//.ToCopyableMarkdownTable().Dump()
 					;
 
-				//$"# {Path.GetFileNameWithoutExtension(files[0])}".Dump();
-				//table.ToMarkdownTable().Dump();
-					
+				$"# {Path.GetFileNameWithoutExtension(files[0])}".Dump();
+				table.ToMarkdownTable().Dump();
+
 				ResourceDictionary GetResources(string basePath, string[] files)
 				{
 					return files.Select(x => Path.Combine(basePath, x))
@@ -737,7 +786,7 @@ public class Script
 				{
 					var oldMap = oldSource.ToDictionary(keySelector);
 					var newMap = newSource.ToDictionary(keySelector);
-					
+
 					foreach (var (o, n) in oldMap.Join(newMap, o => o.Key, n => n.Key, Tuple.Create).ToArray()) // MIDDLE
 					{
 						oldMap.Remove(o.Key);
@@ -745,7 +794,7 @@ public class Script
 
 						yield return (o.Value, n.Value);
 					}
-					
+
 					var knownPairs = new List<(string OldKey, string NewKey)>()
 					{
 						("MaterialComboBoxItemSelectedBackgroundThemeBrush", "ComboBoxItemBackgroundSelected"),
@@ -755,9 +804,9 @@ public class Script
 						("MaterialDateTimeFlyoutBorderThickness", "DatePickerFlyoutBorderThickness"),
 						("MaterialDatePickerFlyoutPresenterBackgroundBrush", "DatePickerFlyoutPresenterBackground"),
 						("MaterialDatePickerBackgroundColorBrush", "DatePickerButtonBackground"),
-						("_____", "_____"),
-						("_____", "_____"),
-						("_____", "_____"),
+						("M3MateriaChipCheckGlyphSize", "ChipCheckGlyphSize"), // typo'd
+						("MaterialChipSelectedForeground", "ChipForegroundChecked"),
+						("MaterialChipSelectedBackground", "ChipBackgroundChecked"),
 						("_____", "_____"),
 						("_____", "_____"),
 					};
@@ -771,7 +820,7 @@ public class Script
 							yield return (oldValue, newValue);
 						}
 					}
-					
+
 					var mutationsT1 = new List<(Func<string, string> OldKeyMutator, Func<string, string> NewKeyMutator)>
 					{
 						(o => o.Replace("PathData", "Data"), n => n),
@@ -782,6 +831,7 @@ public class Script
 						(o => o.RegexReplace("(Theme|Color)Brush$", ""), n => n),
 						(o => o.RegexReplace("(Theme|Color)Brush$", "Brush"), n => n),
 						(o => o.RegexReplace("(Theme|Color)Brush$", "").RegexReplace("(Selected)?(PointerOver|Pressed|Focused|Unfocused|Disabled)(.+)$", "$3$1$2"), n => n),
+						(o => o.RegexReplace("(Theme|Color)Brush$", "").RegexReplace("(Selected)?(PointerOver|Pressed|Focused|Unfocused|Disabled)(.+)$", "$3$1$2"), n => n.Replace("Checked", "Selected")),
 						(o => o.RegexReplace("(Theme|Color)Brush$", "").RegexReplace("(Selected)?(PointerOver|Pressed|Focused|Unfocused|Disabled)(.+)$", "$3$1$2"), n => n.Replace("Background", "")),
 					};
 					var mutationsT2 = new List<(Func<string, string> OldKeyMutator, Func<string, string> NewKeyMutator)>
@@ -789,24 +839,27 @@ public class Script
 						(o => o, n => n),
 						(o => o.RegexReplace("^(M3)?Material", ""), n => n),
 						(o => o.Replace(Path.GetFileNameWithoutExtension(files[0]), ""), n => n.Replace(Path.GetFileNameWithoutExtension(files[0]), "")),
+						
+						//(o => o.Replace("Selected", "Checked"), n => n),
+						
 						(o => o.Replace("SurfaceFab", "FabSurface"), n => n),
 						(o => o.Replace("SecondaryFab", "FabSecondary"), n => n),
 						(o => o.Replace("TertiaryFab", "FabTertiary"), n => n),
 					};
 					foreach (var t2 in mutationsT2)
-					foreach (var t1 in mutationsT1)
-					{
-						(Func<string, string> OldKeyMutator, Func<string, string> NewKeyMutator) mutation = (
-							OldKeyMutator: (string x) => t1.OldKeyMutator(t2.OldKeyMutator(x)), 
-							NewKeyMutator: (string x) => t1.NewKeyMutator(t2.NewKeyMutator(x)));
-						foreach (var (o, n) in oldMap.Join(newMap, o => mutation.OldKeyMutator(o.Key), n => mutation.NewKeyMutator(n.Key), Tuple.Create).ToArray()) // MIDDLE'
+						foreach (var t1 in mutationsT1)
 						{
-							oldMap.Remove(o.Key);
-							newMap.Remove(n.Key);
+							(Func<string, string> OldKeyMutator, Func<string, string> NewKeyMutator) mutation = (
+								OldKeyMutator: (string x) => t1.OldKeyMutator(t2.OldKeyMutator(x)),
+								NewKeyMutator: (string x) => t1.NewKeyMutator(t2.NewKeyMutator(x)));
+							foreach (var (o, n) in oldMap.Join(newMap, o => mutation.OldKeyMutator(o.Key), n => mutation.NewKeyMutator(n.Key), Tuple.Create).ToArray()) // MIDDLE'
+							{
+								oldMap.Remove(o.Key);
+								newMap.Remove(n.Key);
 
-							yield return (o.Value, n.Value);
+								yield return (o.Value, n.Value);
+							}
 						}
-					}
 					foreach (var o in oldMap) // LEFT
 					{
 						yield return (o.Value, default);
@@ -943,6 +996,7 @@ public record Style(string Key = null, string TargetType = null, string BasedOn 
 public record Setter(string Property, string Value);
 
 public record GenericValueObject(string Typename, string Value);
+public record IgnoredObject(string Typename);
 
 public record ResourceKey(string Key, string TargetType = null) : IComparable
 {
@@ -1003,11 +1057,11 @@ public interface IKeyedResource
 				"StaticResource" => new StaticResourceRef(g["key"].Value),
 				"ThemeResource" => new ThemeResourceRef(g["key"].Value),
 				"DynamicResource" => throw new NotImplementedException("DynamicResource"),
-				
+
 				_ => throw new ArgumentOutOfRangeException($"Invalid resource markup: {g["type"].Value}"),
 			};
 		}
-		
+
 		return default;
 	}
 }
@@ -1020,7 +1074,7 @@ public record ThemeResource(ResourceKey Key, object LightValue, object DarkValue
 {
 	public bool AreThemeDefinitionEqual()
 	{
-		return LightValue.Equals(DarkValue);
+		return LightValue?.Equals(DarkValue) == true;
 	}
 }
 public record StaticResourceRef(string Key) : IResourceRef;
@@ -1171,6 +1225,8 @@ public static class ScuffedXamlParser
 			(_/*NSPresentation*/, nameof(Style)) => Style.ParseStyle(e),
 #if ENABLE_GENERIC_VALUE_OBJECT_PARSING
 			(NSPresentation, "FontFamily") => new GenericValueObject("FontFamily", e.Value),
+			(NSPresentation, "Visibility") => new GenericValueObject("Visibility", e.Value),
+			(NSPresentation, "FontWeight") => new GenericValueObject("FontWeight", e.Value),
 			(NSPresentation, "GridLength") => new GenericValueObject("GridLength", e.Value),
 			(NSPresentation, "ControlTemplate") => new GenericValueObject("ControlTemplate", "parser-not-implemented"),
 			(_, "LottieVisualSource") => new GenericValueObject("LottieVisualSource", e.Attribute("UriSource").Value),
@@ -1277,13 +1333,13 @@ public static class ScuffedXamlParser
 	{
 		return new StaticResourceRef(e.Attribute("ResourceKey")?.Value);
 	}
-	
-	private static bool MapDP<T,TProperty>(this T obj, XElement e, Expression<Func<T, TProperty>> memberSelector, out string value) where T : DependencyObject
+
+	private static bool MapDP<T, TProperty>(this T obj, XElement e, Expression<Func<T, TProperty>> memberSelector, out string value) where T : DependencyObject
 	{
 		var property = memberSelector.Body switch
 		{
 			MemberExpression m => m.Member.Name,
-		
+
 			_ => throw new ArgumentOutOfRangeException(memberSelector.Body.Type.ToString()),
 		};
 		if (e.Attribute(property) is { } attribute)
@@ -1298,7 +1354,7 @@ public static class ScuffedXamlParser
 				return true;
 			}
 		}
-		
+
 		value = default;
 		return false;
 	}
@@ -1317,10 +1373,38 @@ public static class EnumerableExtensions
 	{
 		return string.Join(separator, source);
 	}
+	public static IEnumerable<T> MustAll<T>(this IEnumerable<T> source, Func<T, bool> predicate, Func<T, string> formatError = null)
+	{
+		foreach (var item in source)
+		{
+			if (!predicate(item))
+				throw new ArgumentOutOfRangeException(nameof(item), item, formatError?.Invoke(item) ?? "Invalid value");
+
+			yield return item;
+		}
+	}
 }
 public static class StringExtensions
 {
 	public static string RegexReplace(this string input, string pattern, string replacement) => Regex.Replace(input, pattern, replacement);
+	public static string Trim(this string value, string trimChars) => value.Trim(trimChars.ToArray());
+	public static string StripPair(this string value, string pair) => TryStripPair(value, pair, out var result) ? result : value;
+	public static bool TryStripPair(this string value, string pair, out string result)
+	{
+		if (pair is not [var left, var right]) throw new ArgumentException($"invalid pair: {pair}");
+
+		value = value.Trim();
+		if (value.StartsWith(left) && value.EndsWith(right))
+		{
+			result = value[1..^1];
+			return true;
+		}
+		else
+		{
+			result = null;
+			return false;
+		}
+	}
 }
 public static class XElementExtensions
 {
@@ -1452,11 +1536,21 @@ public static class KeyedResourceExtensions
 	public static bool IsStaticResourceFor<T>(this IKeyedResource x) => (x as StaticResource)?.Value is T;
 	public static bool IsThemeResourceFor<T>(this IKeyedResource x) => x is ThemeResource tr && tr.LightValue is T && tr.DarkValue is T;
 
-	public static IEnumerable<T> OfStaticResourceType<T>(this IEnumerable<IKeyedResource> source)
+	public static IEnumerable<T> OfStaticResourceOf<T>(this IEnumerable<IKeyedResource> source)
 	{
 		return source
 			.Select(x => (x as StaticResource)?.Value)
 			.OfType<T>();
+	}
+	public static IEnumerable<StaticResource> OfStaticResource<T>(this IEnumerable<IKeyedResource> source)
+	{
+		return source.OfType<StaticResource>()
+			.Where(x => x.IsStaticResourceFor<T>());
+	}
+	public static IEnumerable<ThemeResource> OfThemeResource<T>(this IEnumerable<IKeyedResource> source)
+	{
+		return source.OfType<ThemeResource>()
+			.Where(x => x.IsThemeResourceFor<T>());
 	}
 }
 public static class FluentExtensions
