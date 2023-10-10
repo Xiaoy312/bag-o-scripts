@@ -915,7 +915,7 @@ public class Script
 			{
 				@"D:\code\uno\framework\Uno\src\Uno.UI\UI\Xaml\Style\Generic\SystemResources.xaml",
 				@"D:\code\uno\framework\Uno\src\Uno.UI.FluentTheme.v2\themeresources_v2.xaml",
-				//@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Application\Common\TextBoxVariables.xaml",
+				@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Application\Common\TextBoxVariables.xaml",
 				@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Application\Common\Fonts.xaml",
 				@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Application\v2\Typography.xaml",
 				@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Application\v2\SharedColors.xaml",
@@ -923,6 +923,8 @@ public class Script
 				//@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\_Resources.xaml",
 				//@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\TextBlock.xaml"
 			}.Aggregate(new ResourceDictionary(), (acc, file) => acc.Merge((ResourceDictionary)ScuffedXamlParser.Load(file)));
+			Util.Metatext("=== finished parsing context").Dump();
+			Console.WriteLine();
 
 			Directory.GetFiles(@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\", "*.xaml")
 				.Where(x => x != @"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\_Resources.xaml")
@@ -1027,7 +1029,11 @@ public class Script
 				}
 
 				PreGenProcessing(options, resources);
-				var source = Generate(options, rd, new NamedResourceBag { Name = "Theme", Children = { new NamedResourceBag { Name = options.TargetType, Children = { resources, styles } } } });
+				
+				var control = new NamedResourceBag { Name = options.TargetType, Children = { resources, styles } };
+				var theme = new NamedResourceBag { Name = "Theme", Children = { control } };
+				var source = Generate(options, rd, theme);
+				
 				//Util.VerticalRun(Util.OnDemand("source", () => source), source.ToCopyable()).Dump("source");
 				File.WriteAllText(outputPath, source);
 				$"length: {source.Length}, lines: {source.Count(x => x == '\n')}".Dump();
@@ -1340,30 +1346,45 @@ public class Script
 			string Generate(SourceGenOptions options, ResourceDictionary rd, NamedResourceBag theme)
 			{
 				//theme.Dump("theme bag", 0);
-				theme.Children.FirstOrDefault(x => x.Name == "Resources").Dump("Resources bag", 0);
+				//theme.Children.FirstOrDefault(x => x.Name == "Resources").Dump("Resources bag", 0);
 				//theme.Children.FirstOrDefault(x => x.Name == "Styles").Dump("Styles bag", 0);
 
 				var buffer = new StringBuilder();
 				var indentLevel = 0;
 				
 				if (options.Production) WriteHead();
-				WriteBag(theme, depth: indentLevel, topLevel: true);
+				WriteBag(theme, depth: indentLevel);
 				if (options.Production) WriteTail();
 				
 				return buffer.ToString();
 
-				void WriteBag(NamedResourceBag bag, int depth = 0, bool topLevel = false)
+				void WriteBag(NamedResourceBag bag, int depth = 0)
 				{
 					var padding = new string('\t', depth);
+					
+					var children = SortChildren(bag.Children).ToArray();
+					var resources = bag.DebugResources
+						.Where(x => !(options.IgnoredResourceTypes?.Contains(ResolveResourceNiceTypeName(x.Resource)) ?? false))
+						// trim duplicate resource keys
+						.OrderByDescending(y => y.Context == "Default")
+						.ThenByDescending(y => y.Context == "Normal")
+						.DistinctBy(y => y.Context)
+						.DistinctBy(y => y.Resource)
+						.Apply(sequence => bag.SortResources
+							? sequence.OrderBy(x => x.Context)
+							: sequence
+							.OrderByDescending(y => y.Context == "Default")
+							.ThenByDescending(y => y.Context == "Normal"))
+						.ToArray();
 
-					if (!bag.Resources.Any() && !bag.Children.Any()) return;
+					if (children.Length == 0 && resources.Length == 0) return;
 					
 					buffer
 						.Append(padding)
-						.AppendLine($"public static{(topLevel? " partial" : null)} class {bag.Name}");
+						.AppendLine($"public static partial class {bag.Name}");
 					if (options.Production) buffer.Append(padding).AppendLine("{");
 					
-					foreach (var item in SortChildren(bag.Children))
+					foreach (var item in children)
 					{
 						WriteBag(item, depth + 1);
 					}
@@ -1371,7 +1392,7 @@ public class Script
 					// fixme: find better way to add empty line between classes/properties
 					
 					var first = true;
-					foreach (var item in GetSortedDebugResources(bag))
+					foreach (var item in resources)
 					{
 						if (options.Production && !first) buffer.AppendLine();
 						first = false;
@@ -1393,6 +1414,7 @@ public class Script
 				{
 					buffer
 						.AppendLine("using System;")
+						.AppendLine("using Windows.UI;")
 						.AppendLine("using Microsoft.UI.Text;")
 						.AppendLine("using Microsoft.UI.Xaml;")
 						.AppendLine("using Microsoft.UI.Xaml.Media;")
@@ -1415,27 +1437,6 @@ public class Script
 					return sequence
 						.OrderByDescending(x => x.Resources.Any() || x.Children.Any())
 						.ThenBy(x => x.Name);
-				}
-				IEnumerable<(IResourceRef Resource, string Context)> GetSortedDebugResources(NamedResourceBag bag)
-				{
-					var source = bag.DebugResources
-						// trim duplicate resource keys
-						.OrderByDescending(y => y.Context == "Default")
-						.ThenByDescending(y => y.Context == "Normal")
-						.DistinctBy(y => y.Context)
-						.DistinctBy(y => y.Resource);
-					if (bag.SortResources)
-					{
-						source = source.OrderBy(x => x.Context);
-					}
-					else
-					{
-						source = source
-							.OrderByDescending(y => y.Context == "Default")
-							.ThenByDescending(y => y.Context == "Normal");
-					}
-					
-					return source;
 				}
 				string ResolveResourceType(IResourceRef rr)
 				{
@@ -1521,7 +1522,7 @@ public class Script
 
 			SourceGenOptions GetOptionsFor(string path)
 			{
-				return Path.GetFileNameWithoutExtension(path) switch
+				var options = (SourceGenOptions)(Path.GetFileNameWithoutExtension(path) switch
 				{
 					"FloatingActionButton" => new() { TargetType = "Button" },
 					"MediaPlayerElement" => new() { TargetType = "MediaTransportControls" },
@@ -1537,7 +1538,10 @@ public class Script
 					"" => new() { Skip = true },
 					
 					_ => new(),
-				};
+				});
+				options.IgnoredResourceTypes = "ControlTemplate,LottieVisualSource".Split(',');
+				
+				return options;
 			}
 		}
 
@@ -1547,6 +1551,8 @@ public class Script
 			public bool TrimMaterialPrefix { get; set; } = true;
 			public bool PromoteDefaultStyleResources { get; set; } = true;
 			public string TargetType { get; set; } = null;
+			public string[] IgnoredResourceTypes { get; set; }
+			/*todo*/public Dictionary<string, string/*?*/> ForcedGroupings { get; set; } // [key] = "fragment1,fragment2" ?? key
 
 			public bool Skip { get; set; } = false;
 			public bool Production { get; set; } = true;
@@ -1556,12 +1562,12 @@ public class Script
 			public string Name { get; set; }
 			public string DebugLeftName { get; set; }
 			public string DebugRightName { get; set; }
-			public bool SortResources { get; set; } = true;
 			public HashSet<IResourceRef> Resources { set; get; } = new();
 			public HashSet<(IResourceRef Resource, string Context)> DebugResources { set; get; } = new();
 			public HashSet<string> DebugPaths { set; get; } = new();
 			public List<NamedResourceBag> Children { set; get; } = new();
-
+			
+			public bool SortResources { get; set; } = true;
 
 			public void Merge(NamedResourceBag other)
 			{
