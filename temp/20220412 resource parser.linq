@@ -1479,20 +1479,18 @@ public class Script
 				//theme.Children.FirstOrDefault(x => x.Name == "Resources").Dump("Resources bag", 0);
 				//theme.Children.FirstOrDefault(x => x.Name == "Styles").Dump("Styles bag", 0);
 
-				var buffer = new StringBuilder();
-				var indentLevel = 0;
+				var buffer = new IndentedTextBuilder("\t");
 
-				if (options.Production) WriteHead();
-				WriteBag(theme, depth: indentLevel);
-				if (options.Production) WriteTail();
+				using (WriteFileHeader())
+				{
+					WriteBag(theme);
+				}
 
 				return buffer.ToString();
 
-				bool WriteBag(NamedResourceBag bag, int depth = 0)
+				bool WriteBag(NamedResourceBag bag)
 				{
 					//bag.Dump(bag.Name ?? "<null>", 0);
-					var padding = new string('\t', depth);
-
 					var children = GetChildrenSorted(bag).ToArray();
 					var resources = bag.ContextedResources
 						.Where(x => !(options.IgnoredResourceTypes?.Contains(ResolveResourceNiceTypeName(x.Resource)) ?? false))
@@ -1527,25 +1525,21 @@ public class Script
 					if (useDefaultShortcutSyntax)
 					{
 						// public static readonly BackgroundVSG Background = new();
-						buffer
-							.Append(padding)
-							.AppendLine($"public static readonly {implClassName} {bag.Name} = new();");
+						buffer.AppendLine($"public static readonly {implClassName} {bag.Name} = new();");
 						// alias and the class should be grouped, without empty line inbetween
 					}
 
 					// write class header
-					buffer
-						.Append(padding)
-						.AppendLine(options.Production
-							? $"public {(!useDefaultShortcutSyntax ? "static " : "")}partial class {implClassName}"
-							: $"class {implClassName} // Sortable={bag.Sortable}");
-					if (options.Production) buffer.Append(padding).AppendLine("{");
+					buffer.AppendLine(options.Production
+						? $"public {(!useDefaultShortcutSyntax ? "static " : "")}partial class {implClassName}"
+						: $"class {implClassName} // Sortable={bag.Sortable}");
+					using var _ = options.Production ? buffer.Block("{", "}") : buffer.Block();
 
 					// write nested
 					foreach (var item in children)
 					{
-						if (options.Production && hadSibling) buffer.AppendLine();
-						if (WriteBag(item, depth + 1))
+						if (options.Production && hadSibling) buffer.AppendEmptyLine();
+						if (WriteBag(item))
 						{
 							hadSibling = true;
 						}
@@ -1557,13 +1551,11 @@ public class Script
 						var type = ResolveResourceNiceTypeName(item.Resource);
 						if (bag.Name != "Styles" && type == "Style") continue; // ignore nested style unless we are under 'Styles'
 
-						if (options.Production && hadSibling) buffer.AppendLine();
+						if (options.Production && hadSibling) buffer.AppendEmptyLine();
 
 						if (options.Production) buffer
-						   	.Append(padding + '\t')
 							.AppendLine($"[ResourceKeyDefinition(typeof({type}), \"{item.Resource.ResourceKey}\"{(type == "Style" && ResolveStyleTargetType(item.Resource) is { } targetType ? $", TargetType = typeof({ResolveStyleTargetType(item.Resource)})" : "")})]");
 						buffer
-						   	.Append(padding + '\t')
 						   	.AppendLine(options.Production
 								? $"public {(!useDefaultShortcutSyntax ? "static " : "")}{item.Resource.GetTypename()}Key<{type}> {item.Context} {(useDefaultShortcutSyntax ? "=" : "=>")} new(\"{item.Resource.ResourceKey}\");"
 								: $"{item.Resource.GetTypename()}<{type}> {item.Context} => new(\"{item.Resource.ResourceKey}\");"
@@ -1577,22 +1569,21 @@ public class Script
 					// write .default syntax implicit operator
 					if (useDefaultShortcutSyntax)
 					{
-						if (options.Production && hadSibling) buffer.AppendLine();
+						if (options.Production && hadSibling) buffer.AppendEmptyLine();
 
 						// public static implicit operator ThemeResourceKey<Brush>(BackgroundVSG self) => self.Default;
 						var type = ResolveResourceNiceTypeName(resources.FirstOrDefault(x => x.Context == "Default").Resource);
-						buffer.Append(padding + '\t')
-							.AppendLine($"public static implicit operator ThemeResourceKey<{type}>({implClassName} self) => self.Default;");
+						buffer.AppendLine($"public static implicit operator ThemeResourceKey<{type}>({implClassName} self) => self.Default;");
 
 						hadSibling = true;
 					}
 
-					if (options.Production) buffer.Append(padding).AppendLine("}");
-
 					return true;
 				}
-				void WriteHead()
+				IDisposable WriteFileHeader()
 				{
+					if (!options.Production) return Disposable.Empty;
+					
 					buffer
 						.AppendLine("using System;")
 						.AppendLine("using Windows.UI;")
@@ -1601,17 +1592,14 @@ public class Script
 						.AppendLine("using Microsoft.UI.Xaml.Media;")
 						.AppendLine("using Uno.Extensions.Markup;")
 						.AppendLine("using Uno.Extensions.Markup.Internals;")
-						.AppendLine();
-					//buffer
-					//	.AppendLine("namespace Uno.Themes.Markup;")
-					//	.AppendLine();
-					buffer
-						.AppendLine("namespace Uno.Themes.Markup")
-						.AppendLine("{");
-
-					indentLevel++;
+						.AppendLine()
+						//.AppendLine("namespace Uno.Themes.Markup;")
+						//.AppendLine();
+						.AppendLine("namespace Uno.Themes.Markup");
+					
+					//return Disposable.Empty;
+					return buffer.Block("{", "}");
 				}
-				void WriteTail() => buffer.AppendLine("}");
 
 				IEnumerable<NamedResourceBag> GetChildrenSorted(NamedResourceBag bag)
 				{
@@ -1636,7 +1624,7 @@ public class Script
 					string GuestimateGlobalizedName(string xamltype)
 					{
 						//return xamltype?.Split(':', 2)[^1];
-						return xamltype?.Dump().Split(':', 2) switch
+						return xamltype?.Split(':', 2) switch
 						{
 							[.., var typename] when "Popup,ToggleButton".Split(',').Contains(typename)
 								=> $"global::Microsoft.UI.Xaml.Controls.Primitives.{typename}",
@@ -3108,6 +3096,83 @@ public class SequentialEqualityComparer<T> : IEqualityComparer<IEnumerable<T>>
 
 		return hash.ToHashCode();
 	}
+}
+public class IndentedTextBuilder
+{
+	public int IndentLevel { get; set; }
+	
+	private readonly string padding;
+	private readonly StringBuilder builder = new();
+	
+	public IndentedTextBuilder(string padding) => this.padding = padding;
+	
+	public IndentedTextBuilder AppendJoinLine(string separator, string[] items)
+	{
+		builder
+			.Append(GetCurrentIndentation())
+			.AppendJoin(separator, items.Where(x => x != null))
+			.AppendLine();
+		return this;
+	}
+	public IndentedTextBuilder AppendLine(string line)
+	{
+		builder
+			.Append(GetCurrentIndentation())
+			.AppendLine(line);
+		return this;
+	}
+	public IndentedTextBuilder AppendLine()
+	{
+		builder
+			.Append(GetCurrentIndentation())
+			.AppendLine();
+		return this;
+	}
+	public IndentedTextBuilder AppendEmptyLine()
+	{
+		builder.AppendLine();
+		return this;
+	}
+	
+	private string GetCurrentIndentation() => string.Concat(Enumerable.Repeat(padding, IndentLevel));
+	public IDisposable Block()
+	{
+		IndentLevel++;
+		return Disposable.Create(() => IndentLevel--);
+	}
+	public IDisposable Block(string opening, string closing)
+	{
+		AppendLine(opening);
+		IndentLevel++;
+		
+		return Disposable.Create(() =>
+		{
+			IndentLevel--;
+			AppendLine(closing);
+		});
+	}
+	public IndentedTextBuilder Indent()
+	{
+		IndentLevel++;
+		return this;
+	}
+	public IndentedTextBuilder Unindent()
+	{
+		IndentLevel--;
+		return this;
+	}
+	
+	public override string ToString() => builder.ToString();
+}
+public class Disposable : IDisposable
+{
+	public static IDisposable Empty => Create(null);
+	public static IDisposable Create(Action dispose) => new Disposable(dispose);
+	
+	private readonly Action dispose;
+	private Disposable(Action dispose) => this.dispose = dispose;
+	
+	public void Dispose() => dispose?.Invoke();
 }
 
 public static class EnumerableExtensions
