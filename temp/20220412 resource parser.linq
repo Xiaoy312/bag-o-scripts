@@ -959,7 +959,7 @@ public class Script
 
 				var rd = ScuffedXamlParser.Load<ResourceDictionary>(path);
 				rd.ResolveWith(context);
-				
+
 				//rd.Values.Dump("ResourceDictionary", 0);
 				//options.Dump("options", 0);
 
@@ -999,14 +999,13 @@ public class Script
 								.ToArray();
 							styleResources.Flatten(x => x.Children).ForEach(item =>
 							{
-								//asdasd
 								//item.Dump(item.Name, 0);
 								if (item != styleResources)
 								{
 									item.Name = UpdateName(item.Name);
 								}
 								item.ContextedResources = item.ContextedResources
-									.Select(x => /*x.Context.Contains('\\') ? x :*/ x with { Context = UpdateName(x.Context) })
+									.Select(x => x with { Context = UpdateName(x.Context) })
 									.ToHashSet();
 							});
 
@@ -1036,11 +1035,11 @@ public class Script
 				}
 
 				PreGenProcessing(options, resources);
-				
+
 				var control = new NamedResourceBag { Name = options.TargetType, Sortable = false, Children = { resources, styles } };
 				var theme = new NamedResourceBag { Name = "Theme", Sortable = false, Children = { control } };
 				var source = Generate(options, rd, theme);
-				
+
 				//Util.VerticalRun(Util.OnDemand("source", () => source), source.ToCopyable()).Dump("source");
 				File.WriteAllText(outputPath, source);
 				$"length: {source.Length}, lines: {source.Count(x => x == '\n')}".Dump();
@@ -1222,17 +1221,17 @@ public class Script
 				//	wip.Children.SelectMany(x => x.Resources).Select(x => x.ResourceKey).Dump().Distinct().Dump();
 				//	Debug.Assert(wip.Children.SelectMany(x => x.Resources).Count() == wip.Children.SelectMany(x => x.Resources).Distinct().Count(), "from here on, there is should be no duplicate");
 				//}
-				
+
 				var resources = new NamedResourceBag { Name = "Resources" };
 				//wip.Children.OrderBy(x => x.Name).ToArray().Dump("wip.Children", 0);
-				
+
 				IEnumerable<NamedResourceBag> CombineByLeftNameIfPossible(IEnumerable<NamedResourceBag> bags)
 				{
 					var results = new List<NamedResourceBag>();
 					foreach (var g in bags.GroupBy(x => x.LeftName))
 					{
 						var children = g.ToList();
-						
+
 						if (children is [var singleEntry])
 						{
 							// linear
@@ -1252,11 +1251,11 @@ public class Script
 							{
 								item.Name = item.Name.RemoveHead(g.Key);
 							}
-							
+
 							results.Add(bag);
 						}
 					}
-					
+
 					// setter property and vsg will not be grouped by .LeftName, so we have to handle them separately at the end
 					foreach (var setterProperty in results.Where(x => x.DebugPaths.JustOneOrDefault()?.StartsWith("/@") == true).ToArray())
 					{
@@ -1272,7 +1271,7 @@ public class Script
 					//results.Dump("results (after setters re-insert)", 1);
 					return results;
 				}
-				
+
 				// 1. extract forced groups
 				// we are extracting forced groups before setter properties,
 				// because otherwise it could result in resources belonging to the same property
@@ -1288,7 +1287,7 @@ public class Script
 							item.Name = item.Name.RemoveOnce(g.Key);
 							item.LeftName = item.LeftName.RemoveOnce(g.Key);
 						}
-						
+
 						var bag = new NamedResourceBag
 						{
 							Name = g.Key,
@@ -1296,7 +1295,7 @@ public class Script
 						};
 						resources.Children.Add(bag);
 					});
-				
+
 				// ~~2. extract setter(control-level) properties~~ merged into next part
 				//wip.Children.Where(x => x.DebugPaths.All(y => y.StartsWith("/@")))
 				//	.ToArray()
@@ -1305,7 +1304,7 @@ public class Script
 				//		wip.Children.Remove(x);
 				//		resources.Children.Add(x);
 				//	});
-				
+
 				// 3. extract remainders
 				resources.Children.AddRange(CombineByLeftNameIfPossible(wip.Children));
 
@@ -1320,7 +1319,7 @@ public class Script
 				bag.Name = bag.Name.RemoveHead(options.TrimControlName ? targetType : null);
 				bag.RightName = InferVisualStateBagName(bag);
 				bag.LeftName = InferLeftName(bag, bag.RightName);
-				
+
 				string InferVisualStateBagName(NamedResourceBag bag)
 				{
 					var properties = bag.DebugPaths.Select(x => x.Split("/@", 2).ElementAtOrDefault(1)).Distinct().ToArray();
@@ -1357,7 +1356,7 @@ public class Script
 					suffixesOptions.Add(visualStateNames);
 					if (rightName != null)
 						suffixesOptions.Add(new[] { rightName });
-						
+
 					var result = bag.Name;
 					var hit = true;
 					do
@@ -1389,12 +1388,12 @@ public class Script
 				void AdjustVisualStateGroupedResources(NamedResourceBag bag)
 				{
 					// flag vsg-bag, so they are non-sortable
-					if (bag.ContextedResources.Select(x => x.Context).Where(x => x != "Default").ToArray() is { Length: >0 } contexts && 
+					if (bag.ContextedResources.Select(x => x.Context).Where(x => x != "Default").ToArray() is { Length: > 0 } contexts &&
 						contexts.All(x => x.Contains(@"\")))
 					{
 						bag.IsVSG = true;
 					}
-					
+
 					// remove vsg name from vs name
 					bag.ContextedResources = bag.ContextedResources
 						.Select(x => x with { Context = x.Context.Split('\\', 2)[^1] })
@@ -1464,7 +1463,7 @@ public class Script
 										.Select(x => x with { Context = item.DebugPaths.FirstOrDefault().Split("/@", 2).LastOrDefault() })
 										.ToHashSet();
 								}
-								
+
 								bag.Children.Remove(item);
 								bag.Merge(item);
 							}
@@ -1482,18 +1481,18 @@ public class Script
 
 				var buffer = new StringBuilder();
 				var indentLevel = 0;
-				
+
 				if (options.Production) WriteHead();
 				WriteBag(theme, depth: indentLevel);
 				if (options.Production) WriteTail();
-				
+
 				return buffer.ToString();
 
 				bool WriteBag(NamedResourceBag bag, int depth = 0)
 				{
 					//bag.Dump(bag.Name ?? "<null>", 0);
 					var padding = new string('\t', depth);
-					
+
 					var children = GetChildrenSorted(bag).ToArray();
 					var resources = bag.ContextedResources
 						.Where(x => !(options.IgnoredResourceTypes?.Contains(ResolveResourceNiceTypeName(x.Resource)) ?? false))
@@ -1506,12 +1505,12 @@ public class Script
 							!bag.Sortable ? sequence :
 							!bag.IsVSG ? sequence.OrderBy(x => x.Context) : sequence
 								.OrderByDescending(y => y.Context == "Default")
-								//.ThenByDescending(y => y.Context == "Normal")
+						//.ThenByDescending(y => y.Context == "Normal")
 						)
 						.ToArray();
 
 					if (children.Length == 0 && resources.Length == 0) return false;
-					
+
 					var hadSibling = false;
 					// .default syntax: // used to skip 2nd part of... (Background.Default)
 					//		public static readonly BackgroundVSG Background = new();
@@ -1519,11 +1518,11 @@ public class Script
 					//			public ThemeResourceKey<Brush> Default { get; } = ...;
 					//			public ThemeResourceKey<Brush> PointerOver { get; } = ...;
 					//			public static implicit operator ThemeResourceKey<Brush>(BackgroundVSG self) => self.Default;
-					var useDefaultShortcutSyntax = options.Production && 
+					var useDefaultShortcutSyntax = options.Production &&
 						bag.IsVSG &&
 						resources.Any(x => x.Context == "Default");
 					var implClassName = useDefaultShortcutSyntax ? $"{bag.Name}VSG" : bag.Name;
-					
+
 					// write .default syntax alias
 					if (useDefaultShortcutSyntax)
 					{
@@ -1533,7 +1532,7 @@ public class Script
 							.AppendLine($"public static readonly {implClassName} {bag.Name} = new();");
 						// alias and the class should be grouped, without empty line inbetween
 					}
-					
+
 					// write class header
 					buffer
 						.Append(padding)
@@ -1541,7 +1540,7 @@ public class Script
 							? $"public {(!useDefaultShortcutSyntax ? "static " : "")}partial class {implClassName}"
 							: $"class {implClassName} // Sortable={bag.Sortable}");
 					if (options.Production) buffer.Append(padding).AppendLine("{");
-					
+
 					// write nested
 					foreach (var item in children)
 					{
@@ -1551,45 +1550,45 @@ public class Script
 							hadSibling = true;
 						}
 					}
-					
+
 					// write resources
 					foreach (var item in resources)
 					{
 						var type = ResolveResourceNiceTypeName(item.Resource);
 						if (bag.Name != "Styles" && type == "Style") continue; // ignore nested style unless we are under 'Styles'
-						
+
 						if (options.Production && hadSibling) buffer.AppendLine();
-						
+
 						if (options.Production) buffer
 						   	.Append(padding + '\t')
-							.AppendLine($"[ResourceKeyDefinition(typeof({type}), \"{item.Resource.ResourceKey}\"{(type == "Style" ? $", TargetType = typeof({type})" : "")})]");
+							.AppendLine($"[ResourceKeyDefinition(typeof({type}), \"{item.Resource.ResourceKey}\"{(type == "Style" && ResolveStyleTargetType(item.Resource) is { } targetType ? $", TargetType = typeof({ResolveStyleTargetType(item.Resource)})" : "")})]");
 						buffer
 						   	.Append(padding + '\t')
 						   	.AppendLine(options.Production
 								? $"public {(!useDefaultShortcutSyntax ? "static " : "")}{item.Resource.GetTypename()}Key<{type}> {item.Context} {(useDefaultShortcutSyntax ? "=" : "=>")} new(\"{item.Resource.ResourceKey}\");"
 								: $"{item.Resource.GetTypename()}<{type}> {item.Context} => new(\"{item.Resource.ResourceKey}\");"
 							);
-							
-							//$"{(options.Production ? "public static " : null)}{item.Resource.GetTypename() + (options.Production ? "Key" : null)}<{type}> {item.Context} {(useDefaultShortcutSyntax ? "=" : "=>")}
-						
+
+						//$"{(options.Production ? "public static " : null)}{item.Resource.GetTypename() + (options.Production ? "Key" : null)}<{type}> {item.Context} {(useDefaultShortcutSyntax ? "=" : "=>")}
+
 						hadSibling = true;
 					}
-					
+
 					// write .default syntax implicit operator
 					if (useDefaultShortcutSyntax)
 					{
 						if (options.Production && hadSibling) buffer.AppendLine();
-						
+
 						// public static implicit operator ThemeResourceKey<Brush>(BackgroundVSG self) => self.Default;
 						var type = ResolveResourceNiceTypeName(resources.FirstOrDefault(x => x.Context == "Default").Resource);
 						buffer.Append(padding + '\t')
 							.AppendLine($"public static implicit operator ThemeResourceKey<{type}>({implClassName} self) => self.Default;");
-						
+
 						hadSibling = true;
 					}
-					
+
 					if (options.Production) buffer.Append(padding).AppendLine("}");
-					
+
 					return true;
 				}
 				void WriteHead()
@@ -1609,22 +1608,45 @@ public class Script
 					buffer
 						.AppendLine("namespace Uno.Themes.Markup")
 						.AppendLine("{");
-					
+
 					indentLevel++;
 				}
 				void WriteTail() => buffer.AppendLine("}");
-				
+
 				IEnumerable<NamedResourceBag> GetChildrenSorted(NamedResourceBag bag)
 				{
 					var results = bag.Children
 						.OrderByDescending(x => x.Resources.Any() || x.Children.Any());
-					
+
 					if (bag.Sortable)
 					{
 						results = results.ThenBy(x => x.Name);
 					}
-					
+
 					return results;
+				}
+				string ResolveStyleTargetType(IResourceRef rr)
+				{
+					return (rd.TryGetValue(rr.ResourceKey, out var resolved) ? resolved.GetResourceValue() : null) switch
+					{
+						Style style => GuestimateGlobalizedName(style.TargetType),
+						_ => null,
+					};
+
+					string GuestimateGlobalizedName(string xamltype)
+					{
+						//return xamltype?.Split(':', 2)[^1];
+						return xamltype?.Dump().Split(':', 2) switch
+						{
+							[.., var typename] when "Popup,ToggleButton".Split(',').Contains(typename)
+								=> $"global::Microsoft.UI.Xaml.Controls.Primitives.{typename}",
+							[var typename] => $"global::Microsoft.UI.Xaml.Controls.{typename}",
+							["muxc", var typename] => $"global::Microsoft.UI.Xaml.Controls.{typename}",
+							[var xmlns, var typename] => $"{xmlns}:{typename}",
+
+							_ => xamltype,
+						};
+					}
 				}
 				string ResolveResourceType(IResourceRef rr)
 				{
@@ -1639,12 +1661,12 @@ public class Script
 					return ResolveResourceType(rr) switch
 					{
 						"Double" => "double",
-					    "Int32" => "int",
-					    "String" => "string",
-					    "Boolean" => "bool",
-						
+						"Int32" => "int",
+						"String" => "string",
+						"Boolean" => "bool",
+
 						"SolidColorBrush" => "Brush",
-						
+
 						var x => x,
 					};
 				}
@@ -1654,32 +1676,40 @@ public class Script
 			{
 				var options = (SourceGenOptions)(Path.GetFileNameWithoutExtension(path) switch
 				{
-					"DatePicker" => new() { ForcedGroupings = new Dictionary<string, string> {
-						//["Button"] = null,
-					}},
+					"DatePicker" => new()
+					{
+						ForcedGroupings = new Dictionary<string, string>
+						{
+							//["Button"] = null,
+						}
+					},
 					"FloatingActionButton" => new() { TargetType = "Button" },
 					"MediaPlayerElement" => new() { TargetType = "MediaTransportControls" },
-					"Slider" => new() { ForcedGroupings = new Dictionary<string, string> {
-						["TickBar"] = null,
-						["Track"] = null,
-					}},
-					"ToggleSwitch" => new() { ForcedGroupings = "Knob,Thumb".Split(',').ToDictionary(x => x, x => default(string))},
+					"Slider" => new()
+					{
+						ForcedGroupings = new Dictionary<string, string>
+						{
+							["TickBar"] = null,
+							["Track"] = null,
+						}
+					},
+					"ToggleSwitch" => new() { ForcedGroupings = "Knob,Thumb".Split(',').ToDictionary(x => x, x => default(string)) },
 					//"PipsPager.Base" => new() { TargetType = "PipsPager" },
 
 					"Flyout" or
 					"ListView" or
 					"NavigationView" or // fixme: very very slow
-					"PipsPager" or 
+					"PipsPager" or
 					"PipsPager.Base" or
 					"Ripple" or
 					"" => new() { Skip = true },
-					
+
 					_ => new(),
 				});
 				options.PromoteDefaultStyleResources = true;
 				options.IgnoredResourceTypes = "ControlTemplate,LottieVisualSource".Split(',');
 				options.Production = true;
-				
+
 				return options;
 			}
 		}
@@ -1705,7 +1735,7 @@ public class Script
 			public HashSet<(IResourceRef Resource, string Context)> ContextedResources { set; get; } = new();
 			public HashSet<string> DebugPaths { set; get; } = new();
 			public List<NamedResourceBag> Children { set; get; } = new();
-			
+
 			public bool IsVSG { get; set; }
 			public bool Sortable { get; set; } = true;
 
