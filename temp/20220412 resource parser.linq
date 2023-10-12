@@ -1388,11 +1388,11 @@ public class Script
 
 				void AdjustVisualStateGroupedResources(NamedResourceBag bag)
 				{
-					// flag vsg bag as non-sortable
+					// flag vsg-bag, so they are non-sortable
 					if (bag.ContextedResources.Select(x => x.Context).Where(x => x != "Default").ToArray() is { Length: >0 } contexts && 
 						contexts.All(x => x.Contains(@"\")))
 					{
-						bag.Sortable = false;
+						bag.IsVSG = true;
 					}
 					
 					// remove vsg name from vs name
@@ -1489,7 +1489,7 @@ public class Script
 				
 				return buffer.ToString();
 
-				void WriteBag(NamedResourceBag bag, int depth = 0)
+				bool WriteBag(NamedResourceBag bag, int depth = 0)
 				{
 					//bag.Dump(bag.Name ?? "<null>", 0);
 					var padding = new string('\t', depth);
@@ -1499,50 +1499,98 @@ public class Script
 						.Where(x => !(options.IgnoredResourceTypes?.Contains(ResolveResourceNiceTypeName(x.Resource)) ?? false))
 						// trim duplicate resource keys
 						.OrderByDescending(y => y.Context == "Default")
-						.ThenByDescending(y => y.Context == "Normal")
+						//.ThenByDescending(y => y.Context == "Normal")
 						.DistinctBy(y => y.Context)
 						.DistinctBy(y => y.Resource)
-						.Apply(sequence => bag.Sortable
-							? sequence.OrderBy(x => x.Context)
-							: sequence
-							.OrderByDescending(y => y.Context == "Default")
-							.ThenByDescending(y => y.Context == "Normal"))
+						.Apply(sequence =>
+							!bag.Sortable ? sequence :
+							!bag.IsVSG ? sequence.OrderBy(x => x.Context) : sequence
+								.OrderByDescending(y => y.Context == "Default")
+								//.ThenByDescending(y => y.Context == "Normal")
+						)
 						.ToArray();
 
-					if (children.Length == 0 && resources.Length == 0) return;
+					if (children.Length == 0 && resources.Length == 0) return false;
 					
+					var hadSibling = false;
+					// .default syntax: // used to skip 2nd part of... (Background.Default)
+					//		public static readonly BackgroundVSG Background = new();
+					//		public class BackgroundVSG
+					//			public ThemeResourceKey<Brush> Default { get; } = ...;
+					//			public ThemeResourceKey<Brush> PointerOver { get; } = ...;
+					//			public static implicit operator ThemeResourceKey<Brush>(BackgroundVSG self) => self.Default;
+					var useDefaultShortcutSyntax = options.Production && 
+						bag.IsVSG &&
+						resources.Any(x => x.Context == "Default");
+					var implClassName = useDefaultShortcutSyntax ? $"{bag.Name}VSG" : bag.Name;
+					
+					// write .default syntax alias
+					if (useDefaultShortcutSyntax)
+					{
+						// public static readonly BackgroundVSG Background = new();
+						buffer
+							.Append(padding)
+							.AppendLine($"public static readonly {implClassName} {bag.Name} = new();");
+						// alias and the class should be grouped, without empty line inbetween
+					}
+					
+					// write class header
 					buffer
 						.Append(padding)
 						.AppendLine(options.Production
-							? $"public static partial class {bag.Name}"
-							: $"class {bag.Name} // Sortable={bag.Sortable}");
+							? $"public {(!useDefaultShortcutSyntax ? "static " : "")}partial class {implClassName}"
+							: $"class {implClassName} // Sortable={bag.Sortable}");
 					if (options.Production) buffer.Append(padding).AppendLine("{");
 					
+					// write nested
 					foreach (var item in children)
 					{
-						WriteBag(item, depth + 1);
+						if (options.Production && hadSibling) buffer.AppendLine();
+						if (WriteBag(item, depth + 1))
+						{
+							hadSibling = true;
+						}
 					}
 					
-					// fixme: find better way to add empty line between classes/properties
-					
-					var first = true;
+					// write resources
 					foreach (var item in resources)
 					{
-						if (options.Production && !first) buffer.AppendLine();
-						first = false;
-						
 						var type = ResolveResourceNiceTypeName(item.Resource);
 						if (bag.Name != "Styles" && type == "Style") continue; // ignore nested style unless we are under 'Styles'
+						
+						if (options.Production && hadSibling) buffer.AppendLine();
 						
 						if (options.Production) buffer
 						   	.Append(padding + '\t')
 							.AppendLine($"[ResourceKeyDefinition(typeof({type}), \"{item.Resource.ResourceKey}\"{(type == "Style" ? $", TargetType = typeof({type})" : "")})]");
 						buffer
 						   	.Append(padding + '\t')
-						   	.AppendLine($"{(options.Production ? "public static " : null)}{item.Resource.GetTypename() + (options.Production ? "Key" : null)}<{type}> {item.Context} => new(\"{item.Resource.ResourceKey}\");");
+						   	.AppendLine(options.Production
+								? $"public {(!useDefaultShortcutSyntax ? "static " : "")}{item.Resource.GetTypename()}Key<{type}> {item.Context} {(useDefaultShortcutSyntax ? "=" : "=>")} new(\"{item.Resource.ResourceKey}\");"
+								: $"{item.Resource.GetTypename()}<{type}> {item.Context} => new(\"{item.Resource.ResourceKey}\");"
+							);
+							
+							//$"{(options.Production ? "public static " : null)}{item.Resource.GetTypename() + (options.Production ? "Key" : null)}<{type}> {item.Context} {(useDefaultShortcutSyntax ? "=" : "=>")}
+						
+						hadSibling = true;
+					}
+					
+					// write .default syntax implicit operator
+					if (useDefaultShortcutSyntax)
+					{
+						if (options.Production && hadSibling) buffer.AppendLine();
+						
+						// public static implicit operator ThemeResourceKey<Brush>(BackgroundVSG self) => self.Default;
+						var type = ResolveResourceNiceTypeName(resources.FirstOrDefault(x => x.Context == "Default").Resource);
+						buffer.Append(padding + '\t')
+							.AppendLine($"public static implicit operator ThemeResourceKey<{type}>({implClassName} self) => self.Default;");
+						
+						hadSibling = true;
 					}
 					
 					if (options.Production) buffer.Append(padding).AppendLine("}");
+					
+					return true;
 				}
 				void WriteHead()
 				{
@@ -1630,7 +1678,7 @@ public class Script
 				});
 				options.PromoteDefaultStyleResources = true;
 				options.IgnoredResourceTypes = "ControlTemplate,LottieVisualSource".Split(',');
-				options.Production = false;
+				options.Production = true;
 				
 				return options;
 			}
@@ -1643,7 +1691,7 @@ public class Script
 			public bool PromoteDefaultStyleResources { get; set; } = true;
 			public string TargetType { get; set; } = null;
 			public string[] IgnoredResourceTypes { get; set; }
-			/*todo*/public Dictionary<string, string/*?*/> ForcedGroupings { get; set; } // [key] = "fragment1,fragment2" ?? key
+			public Dictionary<string, string/*?*/> ForcedGroupings { get; set; }
 
 			public bool Skip { get; set; }
 			public bool Production { get; set; }
@@ -1658,6 +1706,7 @@ public class Script
 			public HashSet<string> DebugPaths { set; get; } = new();
 			public List<NamedResourceBag> Children { set; get; } = new();
 			
+			public bool IsVSG { get; set; }
 			public bool Sortable { get; set; } = true;
 
 			public void Merge(NamedResourceBag other)
