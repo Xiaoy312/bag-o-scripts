@@ -1,9 +1,11 @@
 <Query Kind="Program">
   <NuGetReference>Microsoft.CodeAnalysis.CSharp</NuGetReference>
+  <NuGetReference>Microsoft.Extensions.Logging.Console</NuGetReference>
   <NuGetReference>TextCopy</NuGetReference>
   <Namespace>Microsoft.CodeAnalysis</Namespace>
   <Namespace>Microsoft.CodeAnalysis.CSharp</Namespace>
   <Namespace>Microsoft.CodeAnalysis.CSharp.Syntax</Namespace>
+  <Namespace>Microsoft.Extensions.Logging</Namespace>
   <Namespace>System.Dynamic</Namespace>
   <Namespace>System.Globalization</Namespace>
   <Namespace>TextCopy</Namespace>
@@ -13,7 +15,7 @@
 
 #define ENABLE_GENERIC_VALUE_OBJECT_PARSING
 #define SKIP_ALL_NOTIMPLEMENTED_OBJECT // comment out to throw on missing parser
-//#define SKIP_ALL_NOTIMPLEMENTED_OBJECT_NO_LOG_WARN // hide "Ignoring '{...}', as there is no parser implemented for it" msg
+#define SKIP_ALL_NOTIMPLEMENTED_OBJECT_NO_LOG_WARN // hide "Ignoring '{...}', as there is no parser implemented for it" msg
 #define REPLACE_UNO_PLATFORM_XMLNS
 #define ALLOW_DUPLICATED_KEYS // temp workaround for platform specifics
 #define ALLOW_DUPLICATED_KEYS_WITHOUT_WARNING
@@ -38,8 +40,8 @@ public partial class Script
 		//Specialized.ListExposedToolkitV2Styles();
 		//Specialized.DiffThemeToolkitV2InnerResources();
 		//Specialized.CheckLightWeightResourceParity(@"D:\code\uno\platform\Uno.Themes\src/library/Uno.Material/Styles/Controls/v2/NavigationView.xaml");
-		//LightWeightSourceGen.GenerateThemeCsMarkup();
-		LightWeightSourceGen.GenerateToolkitCsMarkup();
+		LightWeightSourceGen.GenerateThemeCsMarkup();
+		//LightWeightSourceGen.GenerateToolkitCsMarkup();
 
 		/*var additionalResources = new[]
 		{
@@ -96,7 +98,7 @@ public partial class Script
 		{
 			for (int depth = 0; depth < maxDepth && value != null && TryMatch(value, @"^{StaticResource (?<key>\w+)}$") is { Success: true } match; depth++)
 			{
-				value = match.Groups["key"].Value.Apply(y => (resources[y] as StaticResource)?.Value?.ToString());
+				value = match.Groups["key"].Value?.Apply(y => (resources[y] as StaticResource)?.Value?.ToString());
 			}
 			return value;
 		}
@@ -216,7 +218,7 @@ public partial class Script
 			crossProducts.GroupBy(x => x.CK).SelectMany(g => g.Select(x =>
 				$@"<SolidColorBrush x:Key='{x.Key}'
 					Color='{{ThemeResource {x.CK.Key}}}'
-					{(x.OK.Apply(y => $"Opacity='{{StaticResource {y.Key}}}'"))}
+					{(x.OK?.Apply(y => $"Opacity='{{StaticResource {y.Key}}}'"))}
 				/>"
 				.RegexReplace(@"\s+", " ")
 				.Replace('\'', '"')
@@ -253,7 +255,7 @@ public partial class Script
 			x => x.Key,
 			x => x.StaticValue<Style>().Setters.ToDictionary(
 				x => x.Property,
-				x => (object)x.Value?.ToString().Apply(resolveResource ?? (_ => null)) ?? x.Value
+				x => (object)x.Value?.ToString()?.Apply(resolveResource ?? (_ => null)) ?? x.Value
 			)
 		).Dump(path);
 	}
@@ -908,7 +910,6 @@ public partial class Script
 			}
 		}
 	}
-
 }
 public partial class Script
 {
@@ -927,12 +928,13 @@ public partial class Script
 				@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Application\v2\SharedColorPalette.xaml",
 			}.Aggregate(new ResourceDictionary(), (acc, file) => acc.Merge((ResourceDictionary)ScuffedXamlParser.Load(file)));
 			Util.Metatext("=== finished parsing context").Dump();
-			//Console.WriteLine();
-			Util.ClearResults();
+			Console.WriteLine();
+			//Util.ClearResults();
 
 			Directory.GetFiles(@"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\", "*.xaml")
 				.Where(x => x != @"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\_Resources.xaml")
 				//.Where(x => x == @"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\Button.xaml")
+				.Where(x => x == @"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\CheckBox.xaml") // fixme: CheckBoxCheckBackgroundFillUnchecked
 				//.Where(x => x == @"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\ComboBox.xaml") // fixme?: dupes ComboBoxBackgroundDisabled,ComboBoxBackgroundUnfocused
 				//.Where(x => x == @"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\ContentDialog.xaml")
 				//.Where(x => x == @"D:\code\uno\platform\Uno.Themes\src\library\Uno.Material\Styles\Controls\v2\CalendarView.xaml")
@@ -972,52 +974,28 @@ public partial class Script
 			{
 				var options = (SourceGenOptions)(Path.GetFileNameWithoutExtension(path) switch
 				{
-					"DatePicker" => new()
-					{
-						ForcedGroupings = new Dictionary<string, string>
-						{
-							//["Button"] = null,
-						}
-					},
 					"FloatingActionButton" => new() { TargetType = "Button" },
-					//"MediaPlayerElement" => new() { TargetType = "MediaTransportControls" },
-					"Slider" => new()
-					{
-						ForcedGroupings = new Dictionary<string, string>
-						{
-							["TickBar"] = null,
-							["Track"] = null,
-						}
-					},
+					"Slider" => new() { ForcedGroupings = "TickBar,Track".Split(',').ToDictionary(x => x, x => default(string)) },
 					"ToggleSwitch" => new() { ForcedGroupings = "Knob,Thumb".Split(',').ToDictionary(x => x, x => default(string)) },
-					//"PipsPager.Base" => new() { TargetType = "PipsPager" },
-					//"RadioButton" => new()
-					//{
-					//	ForcedGroupings = new Dictionary<string, string>
-					//	{
-					//		["Typography"] = "CharacterSpacing,FontFamily,FontSize,FontWeight",
-					//	}
-					//},
 
-					// to review	
 					"CommandBar" or
-					"MediaPlayerElement" or // fixme: not being skipped
-					"PipsPager.Base" or // low prio
+					"MediaPlayerElement" or
+					"PipsPager.Base" or // todo
 					"RatingControl" or
-					"Flyout" or // fixme: crash
-					"ListView" or
-					"NavigationView" or // fixme: very very slow
+					"Flyout" or // todo
+					"ListView" or // todo
+					"NavigationView" or // todo
 					"PipsPager" or
 					"PipsPager.Base" or
-					"Ripple" or
-					"" => new() { Skip = true },
+					"Ripple"
+						=> new() { Skip = true },
 
 					_ => new(),
 				});
 				options.ForcedGroupings["Typography"] = "CharacterSpacing,FontFamily,FontSize,FontWeight";
 				options.PromoteDefaultStyleResources = true;
 				options.IgnoredResourceTypes = "ControlTemplate,LottieVisualSource".Split(',');
-				options.NamespaceImports = new[] 
+				options.NamespaceImports = new[]
 				{
 					"System",
 					"Windows.UI",
@@ -1026,11 +1004,9 @@ public partial class Script
 					"Microsoft.UI.Xaml.Media",
 					"Uno.Extensions.Markup",
 					"Uno.Extensions.Markup.Internals",
-					null,
-					"ResourceKeyDefinitionAttribute = Uno.Themes.WinUI.Markup.ResourceKeyDefinitionAttribute",
 				};
 				options.Namespace = "Uno.Themes.Markup";
-				options.Production = true;
+				options.Production = false;
 
 				return options;
 			}
@@ -1062,7 +1038,7 @@ public partial class Script
 				//.Where(x => x == @"D:\code\uno\platform\Uno.Toolkit\src\library\Uno.Toolkit.Material\Styles\Controls\v2\NavigationBar.xaml")			// skipped; fixme: BaseMaterial, messy generation
 				//.Where(x => x == @"D:\code\uno\platform\Uno.Toolkit\src\library\Uno.Toolkit.Material\Styles\Controls\v2\TabBar.xaml")					// fixme: hide base styles
 				.ForEach(x => InnerImpl(x, context, GetOptionsFor(x)));
-			
+
 			void InnerImpl(string path, ResourceDictionary context, SourceGenOptions options = default)
 			{
 				var outputPath = path.RegexReplace(@"\.xaml$", ".cs");
@@ -1081,7 +1057,7 @@ public partial class Script
 
 				//Util.VerticalRun(Util.OnDemand("source", () => source), source.ToCopyable()).Dump("source");
 				File.WriteAllText(outputPath, source);
-				$"lines: {source.Count(x => x == '\n')}, length: {source.Length} => {outputPath}".Dump();
+				//$"lines: {source.Count(x => x == '\n')}, length: {source.Length} => {outputPath}".Dump();
 			}
 
 			SourceGenOptions GetOptionsFor(string path)
@@ -1096,14 +1072,14 @@ public partial class Script
 					//"NavigationBar" or
 					"TabBar" or
 					"asd" => new() { },
-					
+
 					//_ => new() { },
 					_ => new() { Skip = true },
 				});
 				options.ForcedGroupings["Typography"] = "CharacterSpacing,FontFamily,FontSize,FontWeight";
 				options.PromoteDefaultStyleResources = true;
 				options.IgnoredResourceTypes = "DataTemplate,ControlTemplate,ItemsPanelTemplate,LottieVisualSource".Split(',');
-				options.NamespaceImports = new[] 
+				options.NamespaceImports = new[]
 				{
 					"System",
 					"Windows.UI",
@@ -1120,7 +1096,7 @@ public partial class Script
 				options.XamlControlTypeResolver = type => type.Split(':', 2) switch
 				{
 					["utu", var typename] => $"global::Uno.Toolkit.UI.{typename}",
-					_ => type,	
+					_ => type,
 				};
 				options.Production = true;
 
@@ -1370,7 +1346,7 @@ public partial class Script
 				Name = x.Reference,
 				Resources = x.ResourceGroup.Select(y => y.Reference).ToHashSet(),
 				ContextedResources = x.ResourceGroup.ToHashSet(),
-				DebugPaths = x.Paths.ToHashSet(),
+				Paths = x.Paths.ToHashSet(),
 			}));
 
 			return result;
@@ -1438,7 +1414,7 @@ public partial class Script
 				}
 
 				// setter property and vsg will not be grouped by .LeftName, so we have to handle them separately at the end
-				foreach (var setterProperty in results.Where(x => x.DebugPaths.JustOneOrDefault()?.StartsWith("/@") == true).ToArray())
+				foreach (var setterProperty in results.Where(x => x.Paths.JustOneOrDefault()?.StartsWith("/@") == true).ToArray())
 				{
 					if (results
 						.Flatten(x => x.Children)
@@ -1497,13 +1473,13 @@ public partial class Script
 		}
 		private static void InferRawBagContext(SourceGenOptions options, string targetType, NamedResourceBag bag)
 		{
-			bag.Name = bag.Name.RemoveHead(options.TrimControlName ? targetType : null);
+			bag.Name = bag.Name.RemoveOnce(options.TrimControlName ? targetType : null);
 			bag.RightName = InferVisualStateBagName(bag);
 			bag.LeftName = InferLeftName(bag, bag.RightName);
 
 			string InferVisualStateBagName(NamedResourceBag bag)
 			{
-				var properties = bag.DebugPaths.Select(x => x.Split("/@", 2).ElementAtOrDefault(1)).Distinct().ToArray();
+				var properties = bag.Paths.Select(x => x.Split("/@", 2).ElementAtOrDefault(1)).Distinct().ToArray();
 				if (properties.Length == 1)
 				{
 					return properties[0];
@@ -1530,14 +1506,18 @@ public partial class Script
 			static string InferLeftName(in NamedResourceBag bag, string rightName) // 2nd argument used to suggest order
 			{
 				var visualStateNames = bag.ContextedResources
-					.Where(x => x.Context.Contains('\\'))
-					.Select(x => x.Context.Split('\\', 2)[1])
+					.Select(x => x.Context?.Split('\\', 2) is [var vsg, var state] ? state : null)
+					.Where(x => x is { })
 					.ToArray();
+				// suffixes options are grouped by suffix of same category
+				// to avoid repeat lookup, eg: 
+				// once "Pressed" is found, there is no need to check "Disabled" anymore
 				var suffixesOptions = new List<string[]>();
 				suffixesOptions.Add(visualStateNames);
 				if (rightName != null)
 					suffixesOptions.Add(new[] { rightName });
 
+				// repeatly remove every suffixes options
 				var result = bag.Name;
 				var hit = true;
 				do
@@ -1598,7 +1578,7 @@ public partial class Script
 				{
 					node.Children.Remove(item);
 
-					if (item.DebugPaths.FirstOrDefault().StartsWith("/@") &&
+					if (item.Paths.FirstOrDefault().StartsWith("/@") &&
 						node.Children.FirstOrDefault(x => x != item && (x.Name == item.Name)) is { } vsg)
 					{
 						// merge with relevant visual state group
@@ -1607,10 +1587,12 @@ public partial class Script
 					else
 					{
 						// otherwise promote
-						var resource = item.Resources.FirstOrDefault();
-						node.Resources.Add(resource);
-						node.ContextedResources.Add((resource, Context: item.Name));
-						node.DebugPaths.AddRange(item.DebugPaths);
+						if (item.Resources.FirstOrDefault() is { } resource)
+						{
+							node.Resources.Add(resource);
+							node.ContextedResources.Add((resource, Context: item.Name));
+							node.Paths.AddRange(item.Paths);
+						}
 					}
 				}
 			}
@@ -1641,7 +1623,7 @@ public partial class Script
 							if (string.IsNullOrEmpty(item.Name) && item.Resources.Count == 1)
 							{
 								item.ContextedResources = item.ContextedResources
-									.Select(x => x with { Context = item.DebugPaths.FirstOrDefault().Split("/@", 2).LastOrDefault() })
+									.Select(x => x with { Context = item.Paths.FirstOrDefault().Split("/@", 2).LastOrDefault() })
 									.ToHashSet();
 							}
 
@@ -1657,8 +1639,12 @@ public partial class Script
 		private static string Generate(SourceGenOptions options, ResourceDictionary rd, NamedResourceBag theme)
 		{
 			//theme.Dump("theme bag", 0);
-			//theme.Children.FirstOrDefault(x => x.Name == "Resources").Dump("Resources bag", 0);
-			//theme.Children.FirstOrDefault(x => x.Name == "Styles").Dump("Styles bag", 0);
+			//theme.Flatten(x => x.Children).FirstOrDefault(x => x.Name == "Resources").Dump("Resources bag", 0);
+			//theme.Flatten(x => x.Children).FirstOrDefault(x => x.Name == "Styles").Dump("Styles bag", 0);
+			
+			theme.Flatten(x => x.Children)
+				.Where(x => x.IsVSG)
+				.Dump("VSG bags", 1, exclude: "Resources, Sortable");
 
 			var buffer = new IndentedTextBuilder("\t") { BlockConsecutiveEmptyLines = true };
 
@@ -1763,7 +1749,7 @@ public partial class Script
 			IDisposable WriteFileHeader()
 			{
 				if (!options.Production) return Disposable.Empty;
-				
+
 				foreach (var import in options.NamespaceImports)
 				{
 					if (!string.IsNullOrEmpty(import))
@@ -1776,7 +1762,7 @@ public partial class Script
 					}
 				}
 				buffer.AppendEmptyLine();
-				
+
 				if (options.UseFileScopedNamespace)
 				{
 					buffer.AppendLine($"namespace {options.Namespace};");
@@ -1815,15 +1801,15 @@ public partial class Script
 					return //xamltype?.Split(':', 2)[^1];
 						options.XamlControlTypeResolver?.Invoke(xamltype) ??
 					 	xamltype?.Split(':', 2) switch // guestimate
-						{
-							[.., var typename] when "Popup,ToggleButton".Split(',').Contains(typename)
-								=> $"global::Microsoft.UI.Xaml.Controls.Primitives.{typename}",
-							[var typename] => $"global::Microsoft.UI.Xaml.Controls.{typename}",
-							["muxc", var typename] => $"global::Microsoft.UI.Xaml.Controls.{typename}",
-							[var xmlns, var typename] => $"{xmlns}:{typename}",
+						 {
+							 [.., var typename] when "Popup,ToggleButton".Split(',').Contains(typename)
+								 => $"global::Microsoft.UI.Xaml.Controls.Primitives.{typename}",
+							 [var typename] => $"global::Microsoft.UI.Xaml.Controls.{typename}",
+							 ["muxc", var typename] => $"global::Microsoft.UI.Xaml.Controls.{typename}",
+							 [var xmlns, var typename] => $"{xmlns}:{typename}",
 
-							_ => xamltype,
-						};
+							 _ => xamltype,
+						 };
 				}
 			}
 			string ResolveResourceType(IResourceRef rr)
@@ -1860,8 +1846,8 @@ public partial class Script
 			public string TargetType { get; set; } = null;
 			public string[] IgnoredResourceTypes { get; set; }
 			public Dictionary<string, string?> ForcedGroupings { get; set; } = new();
-			
-			// generater options
+
+			// generator options
 			public string[] NamespaceImports { get; set; }
 			public string Namespace { get; set; }
 			public bool UseFileScopedNamespace { get; set; } = false;
@@ -1878,7 +1864,7 @@ public partial class Script
 			public string RightName { get; set; }
 			public HashSet<IResourceRef> Resources { set; get; } = new();
 			public HashSet<(IResourceRef Resource, string Context)> ContextedResources { set; get; } = new();
-			public HashSet<string> DebugPaths { set; get; } = new();
+			public HashSet<string> Paths { set; get; } = new();
 			public List<NamedResourceBag> Children { set; get; } = new();
 
 			public bool IsVSG { get; set; }
@@ -1888,7 +1874,7 @@ public partial class Script
 			{
 				Resources.AddRange(other.Resources);
 				ContextedResources.AddRange(other.ContextedResources);
-				DebugPaths.AddRange(other.DebugPaths);
+				Paths.AddRange(other.Paths);
 				Children.AddRange(other.Children);
 			}
 		}
@@ -1908,9 +1894,12 @@ public static class ScuffedXamlParser
 {
 	public static readonly string[] IgnoredXmlnsPrefixes = "todo,void".Split(',');
 
+	private static readonly ILogger _logger = typeof(ScuffedXamlParser).Log();
+
 	public static T Load<T>(string path)
 	{
 		Util.Metatext($"=== parsing: {path}").Dump();
+		//_logger.LogInformation($"loading: {path}");
 		var document = XDocument.Load(path);
 		return ScuffedXamlParser.Parse<T>(document.Root);
 	}
@@ -1936,7 +1925,7 @@ public static class ScuffedXamlParser
 			// common platform-conditional offenders
 			(_/*NSPresentation*/, nameof(Style)) => Style.Parse(e),
 			(_/*NSPresentation*/, nameof(Setter)) => Setter.Parse(e),
-			(_/*NSPrensetation*/, nameof(ControlTemplate)) => ControlTemplate.Parse(e),
+			(_/*NSPresentation*/, nameof(ControlTemplate)) => ControlTemplate.Parse(e),
 
 			(NSPresentation, nameof(VisualStateGroup)) => VisualStateGroup.Parse(e),
 			(NSPresentation, nameof(VisualTransition)) => VisualTransition.Parse(e),
@@ -1993,7 +1982,7 @@ public static class ScuffedXamlParser
 			(NSPresentation, "FontWeight") => new GenericValueObject("FontWeight", e.Value),
 			(NSPresentation, "GridLength") => new GenericValueObject("GridLength", e.Value),
 			//(NSPresentation, "ControlTemplate") => new GenericValueObject("ControlTemplate", "parser-not-implemented"),
-			(_, "LottieVisualSource") => new GenericValueObject("LottieVisualSource", e.Attribute("UriSource").Value),
+			(_, "LottieVisualSource") => new GenericValueObject("LottieVisualSource", e.Attribute("UriSource")?.Value),
 #endif
 
 			_ => null,
@@ -2469,7 +2458,7 @@ public record ControlTemplate(string TargetType = null)
 		{
 			0 => null,
 			1 => ScuffedXamlParser.Parse(elements[0]) is { } parsed
-				? parsed is VisualTreeElement vte 
+				? parsed is VisualTreeElement vte
 					? vte : throw new InvalidOperationException($"ControlTemplate can only accept a child of VisualTreeElement: parsed type is {parsed?.GetType().Name ?? "<null>"}").PreDump(parsed)
 				: throw new InvalidOperationException(),
 			_ => throw new InvalidOperationException($"ControlTemplate > multiple children are present").PreDump(e),
@@ -2907,7 +2896,7 @@ public record Timeline(string Type)
 		}
 		string ParseKeyFrame(XElement frame)
 		{
-			string Value(string key = "Value") => SimplifyMarkup(frame.Attribute(key)?.Value ?? frame.GetMember("Value").Value);
+			string Value(string key = "Value") => SimplifyMarkup(frame.Attribute(key)?.Value ?? frame.GetMember("Value")?.Value);
 			string KeyTime(string key = "KeyTime") => SimplifyMarkup(SimplifyTimeSpan(frame.Attribute(key)?.Value));
 			string Raw(string key) => frame.Attribute(key)?.Value;
 
@@ -3181,13 +3170,14 @@ public class ResourceDictionary : Dictionary<ResourceKey, IKeyedResource>
 	protected static ResourceDictionary[] ParseThemeDictionaries(ResourceDictionary rd, XElement e)
 	{
 		var themes = Parse(e);
-		var light = (ResourceDictionary)((StaticResource)themes.FirstOrDefault(x => ThemeMapping["Light"].Split(',').Contains(x.Key.Key)).Value).Value;
-		var dark = (ResourceDictionary)((StaticResource)themes.FirstOrDefault(x => ThemeMapping["Dark"].Split(',').Contains(x.Key.Key)).Value).Value;
+
+		var light = (themes.FirstOrDefault(x => ThemeMapping["Light"].Split(',').Contains(x.Key.Key)).Value as StaticResource)?.Value as ResourceDictionary;
+		var dark = (themes.FirstOrDefault(x => ThemeMapping["Dark"].Split(',').Contains(x.Key.Key)).Value as StaticResource)?.Value as ResourceDictionary;
 
 		object GetResourceUnwrapped(ResourceDictionary rd, ResourceKey key)
 			//=> ((StaticResource)rd[key]).Value;
-			=> rd.TryGetValue(key, out var value) && value is StaticResource sr ? sr.Value : default;
-		foreach (var key in Enumerable.Union(light.Keys, dark.Keys))
+			=> rd?.TryGetValue(key, out var value) == true && value is StaticResource sr ? sr.Value : default;
+		foreach (var key in Enumerable.Union(light?.Keys.Safe(), dark?.Keys.Safe()))
 			rd.Add(new ThemeResource(key, GetResourceUnwrapped(light, key), GetResourceUnwrapped(dark, key)));
 
 		return new[] { light, dark };
@@ -3241,7 +3231,8 @@ public class EquitableDictionary<TKey, TValue> : Dictionary<TKey, TValue>
 	}
 	public override bool Equals(object obj)
 	{
-		if (object.ReferenceEquals(this, obj)) return true;
+		if (obj == null) return false;
+		if (ReferenceEquals(this, obj)) return true;
 		if (obj is EquitableDictionary<TKey, TValue> other)
 		{
 			return
@@ -3444,7 +3435,7 @@ public static class StringExtensions
 	{
 		return value.Length > 0 && s.IndexOf(value) is var index && index != -1
 			? s.Remove(index, value.Length)
-			: value;
+			: s;
 	}
 	public static string RemoveHead(this string value, string head) => head?.Length > 0 && value.StartsWith(head) ? value[head.Length..] : value;
 	public static string RemoveTail(this string value, string tail) => tail?.Length > 0 && value.EndsWith(tail) ? value[..^tail.Length] : value;
@@ -3531,7 +3522,7 @@ public static class XAttributeExtensions
 		return match.Success ? match.Groups["key"].Value : null;
 	}
 }
-public static class ColorHelper
+public static class ColorExtensions
 {
 	public static string ToRgbText(this Color color) => $"{color.R:X2}{color.G:X2}{color.B:X2}";
 	public static string ToRgbText(this SolidColorBrush brush) => brush.Color.ToRgbText();
@@ -3616,6 +3607,32 @@ public static class MarkdownHelper
 		return builder.ToString();
 	}
 }
+public static class Logger
+{
+	private static ILoggerFactory? _factory;
+	private static ILoggerFactory Factory => _factory ?? throw new InvalidOperationException("The factory is not initialized.");
+
+	static Logger()
+	{
+		InitializeFactory(builder => builder.SetMinimumLevel(LogLevel.Debug));
+	}
+	public static void InitializeFactory(Action<ILoggingBuilder> configure)
+	{
+		if (_factory is { }) throw new InvalidOperationException("The factory was already initialized.");
+
+		_factory = LoggerFactory.Create(b => b
+			.Apply(configure)
+			.AddConsole(c =>
+			{
+				c.FormatterName = "Systemd"; // one-liner output
+			})
+		);
+	}
+
+	public static ILogger<T> For<T>() => Factory.CreateLogger<T>();
+	public static ILogger For(Type type) => Factory.CreateLogger(type);
+	public static ILogger Log(this Type type) => Factory.CreateLogger(type);
+}
 public static class KeyedResourceExtensions
 {
 	public static bool IsReferenceFor<T>(this IKeyedResource x)
@@ -3667,7 +3684,12 @@ public static class FluentExtensions
 	public static T As<T>(this object x) where T : class => x as T;
 	public static TResult Apply<T, TResult>(this T value, Func<T, TResult> selector)
 	{
-		return value != null ? selector(value) : default;
+		return selector(value);
+	}
+	public static T Apply<T>(this T value, Action<T> apply)
+	{
+		apply(value);
+		return value;
 	}
 }
 public static class PivotHelper
@@ -3729,7 +3751,7 @@ public static class HierarchyExtensions
 	}
 	public static string TreeGraph<T>(this T node, Func<T, IEnumerable<T>> childrenSelector, Func<IEnumerable<T>, IEnumerable<T>> sorter, Func<T, string> formatter)
 	{
-		return node.TreeGraph(childrenSelector, seq => seq, (x, i) => new string(' ', i * 4) + formatter);
+		return node.TreeGraph(childrenSelector, sorter, (x, i) => new string(' ', i * 4) + formatter);
 	}
 	public static string TreeGraph<T>(this T node, Func<T, IEnumerable<T>> childrenSelector, Func<IEnumerable<T>, IEnumerable<T>> sorter, Func<T, int, string> formatter)
 	{
@@ -3759,15 +3781,15 @@ public static class HierarchyExtensions
 			}
 		}
 	}
-	public static IEnumerable<(string Path, T Node)> Flatten<T>(this T element, Func<T, IEnumerable<T>> childrenSelector, Func<T, string> nodeDescriptor, string delimitor = @"/") => Flatten(element, childrenSelector, nodeDescriptor, delimitor, null);
-	private static IEnumerable<(string Path, T Node)> Flatten<T>(this T element, Func<T, IEnumerable<T>> childrenSelector, Func<T, string> nodeDescriptor, string delimitor, string path)
+	public static IEnumerable<(string Path, T Node)> Flatten<T>(this T element, Func<T, IEnumerable<T>> childrenSelector, Func<T, string> nodeDescriptor, string separator = @"/") => Flatten(element, childrenSelector, nodeDescriptor, separator, null);
+	private static IEnumerable<(string Path, T Node)> Flatten<T>(this T element, Func<T, IEnumerable<T>> childrenSelector, Func<T, string> nodeDescriptor, string separator, string path)
 	{
-		path += delimitor + nodeDescriptor(element);
+		path += separator + nodeDescriptor(element);
 
 		yield return (path, element);
 		foreach (var child in childrenSelector(element) ?? Enumerable.Empty<T>())
 		{
-			foreach (var item in Flatten(child, childrenSelector, nodeDescriptor, delimitor, path))
+			foreach (var item in Flatten(child, childrenSelector, nodeDescriptor, separator, path))
 			{
 				yield return (item.Path, item.Node);
 			}
