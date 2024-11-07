@@ -32,12 +32,12 @@ public partial class TimesheetScript
 
 	public static async Task NewMain()
 	{
-		InitializeJsonSerializer();
-
+		//InitializeJsonSerializer();
 		//TimesheetParsingTests();
 		//TimesheetProcessingTests();
-		await HarvestApiTest();
+		//await HarvestApiTest();
 		//ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(-7):yyyyMMdd}");
+		ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(+0):yyyyMMdd}");
 	}
 
 	public static void LegacyMain()
@@ -68,6 +68,7 @@ public partial class TimesheetScript
  * [x] refactor
  * [x] harvest api integration
  *		[x] auto linking issue
+ * [ ] extract project and task id, and add mappings for them
  */
 
 public partial class TimesheetScript // new
@@ -76,21 +77,6 @@ public partial class TimesheetScript // new
 	{
 		builder
 			.AddSingleton<HarvestApiEndpoint>();
-	}
-	private static void InitializeJsonSerializer()
-	{
-		JsonConvert.DefaultSettings = () =>
-		{
-			var settings = new JsonSerializerSettings()
-			{
-				ContractResolver = new DefaultContractResolver
-				{
-					NamingStrategy = new SnakeCaseNamingStrategy(),
-				},
-			};
-
-			return settings;
-		};
 	}
 
 	private static void TimesheetParsingTests()
@@ -125,11 +111,11 @@ public partial class TimesheetScript // new
 	private static async Task HarvestApiTest()
 	{
 		var services = BuildServiceProvider();
-		
+
 		var harvest = services.GetRequiredService<HarvestApiEndpoint>();
-		//await harvest.GetCurrentUserAsync().DumpJson();
+		//await harvest.GetCurrentUserAsync().DumpJson(0).DumpContent();
 		//await harvest.AddTimeEntry(new HarvestNewTimeEntry(00000000, 00000000, DateHelper.TodayOnly, 0.1, "test", HarvestExternalReference.FromUrl("https://help.getharvest.com/api-v2/timesheets-api/timesheets/time-entries/"))).Dump();
-		
+
 		var results = await harvest.GetProjectAssignmentsAsync().Unwrap();
 		results.ProjectAssignments
 			.SelectMany(pa => pa.TaskAssignments.Select(t => new
@@ -141,6 +127,12 @@ public partial class TimesheetScript // new
 				TaskName = t.Task.Name,
 			}))
 			.Dump();
+
+		//var persistence = services.GetRequiredService<IPersistenceService>();
+		//(persistence.Read<ScriptSecrets>().Dump()?.Declassify()).Dump();
+		
+		//var settings = new JsonSerializerSettings { ContractResolver = new DefaultContractResolver() };
+		//JsonConvert.SerializeObject(new ScriptSecrets("qwe", "asd".ToSecureString()), settings).DumpTell();
 	}
 	private static void ProcessTimesheet(string path)
 	{
@@ -626,8 +618,8 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 				{
 					var value = p.YValues[0];
 					var ratio = value / total;
-					
-					p.LegendToolTip = 
+
+					p.LegendToolTip =
 					p.ToolTip = $"{p.AxisLabel}: {value:F2}hrs ({ratio:P2})";
 				}
 			})
@@ -682,7 +674,7 @@ public record EventSource(EventSource.EventSourceType Type, string Source, strin
 	""", RegexOptions.IgnorePatternWhitespace);
 }
 
-public partial class HarvestApiEndpoint(HarvestCredential credential) : ApiEndpointBase
+public partial class HarvestApiEndpoint(ScriptConfig config) : ApiEndpointBase
 {
 	public async Task Test()
 	{
@@ -706,7 +698,7 @@ public partial class HarvestApiEndpoint(HarvestCredential credential) : ApiEndpo
 			.JsonPayload(entry)
 		);
 	}
-	
+
 	public async Task<Json<HarvestProjectAssignments>> GetProjectAssignmentsAsync()
 	{
 		return await QueryJson<HarvestProjectAssignments>(q => q
@@ -723,11 +715,23 @@ public partial class HarvestApiEndpoint
 	{
 		var client = new HttpClient();
 		client.BaseAddress = BaseAddress;
-		client.DefaultRequestHeaders.Add("Authorization", $"Bearer {credential.PAT?.Get()}");
-		client.DefaultRequestHeaders.Add("Harvest-Account-Id", credential.AccountID);
+		client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.Secrets?.HarvestPAT.MarshalToString()}");
+		client.DefaultRequestHeaders.Add("Harvest-Account-Id", config.Secrets?.HarvestAccountID);
 		client.DefaultRequestHeaders.Add("User-agent", "duration-calculator");
 
 		return client;
+	}
+	protected override JsonSerializerSettings? CreateJsonSerializerSettings()
+	{
+		var settings = new JsonSerializerSettings()
+		{
+			ContractResolver = new DefaultContractResolver
+			{
+				NamingStrategy = new SnakeCaseNamingStrategy(),
+			},
+		};
+		
+		return settings;
 	}
 }
 public record HarvestUser(int Id, string Email); // https://help.getharvest.com/api-v2/users-api/users/users/
@@ -742,26 +746,33 @@ public record HarvestProject(int Id, string Name, string Code);
 public record HarvestTaskAssignment(int Id, HarvestTask Task);
 public record HarvestTask(int Id, string Name);
 
-
 public abstract class ApiEndpointBase
 {
 	protected virtual HttpClient CreateHttpClient() => new();
+	protected virtual JsonSerializerSettings? CreateJsonSerializerSettings() => null;
 
 	protected async Task<HttpResponseMessage> Query(Func<QueryBuilder, QueryBuilder> builder)
 	{
 		using var client = CreateHttpClient();
 
-		return await builder(new()).Query(client);
+		return await builder(new QueryBuilder(CreateJsonSerializerSettings())).Query(client);
 	}
-	protected Task<Json<T>> QueryJson<T>(Func<QueryBuilder, QueryBuilder> builder) => Query(builder).ReadAsJson<T>();
-	protected Task<JsonArray<T>> QueryJsonArray<T>(Func<QueryBuilder, QueryBuilder> builder) => Query(builder).ReadAsJsonArray<T>();
+	protected Task<Json<T>> QueryJson<T>(Func<QueryBuilder, QueryBuilder> builder) => Query(builder).ReadAsJson<T>(CreateJsonSerializerSettings());
+	protected Task<JsonArray<T>> QueryJsonArray<T>(Func<QueryBuilder, QueryBuilder> builder) => Query(builder).ReadAsJsonArray<T>(CreateJsonSerializerSettings());
 }
 public class QueryBuilder
 {
-	private HttpRequestMessage request = new HttpRequestMessage();
+	private readonly HttpRequestMessage request = new HttpRequestMessage();
+	private readonly JsonSerializerSettings? jsonSerializerSettings = null;
+	
 	private Dictionary<string, string> query = new Dictionary<string, string>();
 	private Dictionary<string, string> payload = new Dictionary<string, string>();
 	private (string ContentType, string Json)? jsonPayload;
+	
+	public QueryBuilder(JsonSerializerSettings? jsonSerializerSettings = null)
+	{
+		this.jsonSerializerSettings = jsonSerializerSettings;
+	}
 
 	public QueryBuilder Get() => Do(() => request.Method = HttpMethod.Get);
 	public QueryBuilder Put() => Do(() => request.Method = HttpMethod.Put);
@@ -779,7 +790,7 @@ public class QueryBuilder
 	public QueryBuilder Param(string name, Func<string> value, Func<bool> condition) => Do(() => query.Add(name, value()), condition);
 
 	public QueryBuilder JsonPayload(string json, string contentType = "application/json") => Do(() => jsonPayload = (contentType, json));
-	public QueryBuilder JsonPayload<T>(T value, string contentType = "application/json") => Do(() => jsonPayload = (contentType, JsonConvert.SerializeObject(value)));
+	public QueryBuilder JsonPayload<T>(T value, string contentType = "application/json", JsonSerializerSettings? settings = null) => Do(() => jsonPayload = (contentType, JsonConvert.SerializeObject(value, jsonSerializerSettings ?? settings)));
 	public QueryBuilder PayloadParam(string name, string value) => Do(() => payload.Add(name, value));
 	public QueryBuilder PayloadParam(string name, string value, Func<bool> condition) => Do(() => payload.Add(name, value), condition);
 	public QueryBuilder PayloadParam(string name, Func<string> value, Func<bool> condition) => Do(() => payload.Add(name, value()), condition);
@@ -833,11 +844,11 @@ public class Json<T> : JObject
 {
 	public T? Content { get; }
 
-	public Json(string json) : base(JObject.Parse(json))
+	public Json(string json, JsonSerializerSettings? settings = null) : base(JObject.Parse(json))
 	{
-		Content = ToObject<T>();
+		Content = ToObject<T>(JsonSerializer.Create(settings));
 	}
-	public static new Json<T> Parse(string json) => new Json<T>(json);
+	public static new Json<T> Parse(string json, JsonSerializerSettings? settings = null) => new Json<T>(json, settings);
 
 	private object? ToDump() => Content;
 	public override string ToString()
@@ -851,12 +862,11 @@ public class JsonArray<T> : JArray
 {
 	public T[] Items { get; }
 
-	public JsonArray() { }
-	public JsonArray(string json) : base(JArray.Parse(json))
+	public JsonArray(string json, JsonSerializerSettings? settings = null) : base(JArray.Parse(json))
 	{
-		Items = JsonConvert.DeserializeObject<T[]>(json);
+		Items = JsonConvert.DeserializeObject<T[]>(json, settings);
 	}
-	public static new JsonArray<T> Parse(string json) => new JsonArray<T>(json);
+	public static new JsonArray<T> Parse(string json, JsonSerializerSettings? settings = null) => new JsonArray<T>(json, settings);
 
 	private object ToDump() => Items;
 	public override string ToString()
@@ -1033,6 +1043,9 @@ public static class HttpClientExtensions
 		//response.EnsureSuccessStatusCode();
 		if (!response.IsSuccessStatusCode)
 		{
+			response.Dump();
+			response.RequestMessage?.Content?.ReadAsStringAsync().Dump();
+			
 			throw new HttpResponseException2(
 				response.StatusCode,
 				$"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}).");
@@ -1063,14 +1076,14 @@ public static class HttpClientExtensions
 			throw;
 		}
 	}
-	public static async Task<Json<T>> ReadAsJson<T>(this Task<HttpResponseMessage> task)
+	public static async Task<Json<T>> ReadAsJson<T>(this Task<HttpResponseMessage> task, JsonSerializerSettings? settings = null)
 	{
 		var response = await task;
 		var content = await response.Content.ReadAsStringAsync();
 
 		try
 		{
-			return Json<T>.Parse(content);
+			return Json<T>.Parse(content, settings);
 		}
 		catch (Exception e)
 		{
@@ -1078,14 +1091,14 @@ public static class HttpClientExtensions
 			throw;
 		}
 	}
-	public static async Task<JsonArray<T>> ReadAsJsonArray<T>(this Task<HttpResponseMessage> task)
+	public static async Task<JsonArray<T>> ReadAsJsonArray<T>(this Task<HttpResponseMessage> task, JsonSerializerSettings? settings = null)
 	{
 		var response = await task;
 		var content = await response.Content.ReadAsStringAsync();
 
 		try
 		{
-			return JsonArray<T>.Parse(content);
+			return JsonArray<T>.Parse(content, settings);
 		}
 		catch (Exception e)
 		{
