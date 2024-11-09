@@ -24,6 +24,10 @@
 //#define SORT_JSON_PROPERTY
 #define DUMP_JSON_AS_OBJECT
 
+/* PLEASE READ: // TODO
+	- run duration calculator.config.linq and add your harvest access token
+*/
+
 public partial class TimesheetScript
 {
 	public static async Task Main() =>
@@ -73,7 +77,8 @@ public partial class TimesheetScript
  * [x] add option to add single day update
  * [ ] discord linking
  * [ ] document timesheet syntax
- * [ ] harvest setup guide
+ * [x] harvest setup guide
+ * [ ] project task mapping
  */
 
 public partial class TimesheetScript // new
@@ -157,13 +162,26 @@ public partial class TimesheetScript // new
 		var date = report.Items.Min(x => x.Date);
 		var relativeTime = date.GetWeeksFrom(DateHelper.TodayOnly) switch
 		{
-			var n when n < -1 => $"{-n} weeks ago",
-			-1 => "last week",
-			0 => "this week",
-			1 => "next week",
-			var n when n > 1 => $"{n} weeks from now",
-			_ => "?",
+			var n when n < -1 => $"from {-n} weeks ago",
+			-1 => "from last week",
+			0 => "from this week",
+			1 => "from next week",
+			var n when n > 1 => $"from {n} weeks from now",
+			_ => $"from week of {date:yyyyMMdd}",
 		};
+		
+		//report.Items.Select(item => new
+		//{
+		//	item.Date,
+		//	Note = $"{item.EventSource?.ToString() ?? "no-event-source"}: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
+		//	Hours = Math.Max(0.01, item.Duration.TotalHours).ToString("F2"),
+		//}).Dump(0);
+		
+		if (config.Secrets?.IsValid() != true)
+		{
+			var configScriptPath = Path.Combine(Util.CurrentQuery.Location, "duration calculator.config.linq");
+			Util.HorizontalRun(true, "Please use", new Hyperlinq(configScriptPath, Path.GetFileName(configScriptPath)), "to add your Harvest PAT.").Dump("Secrets not found");
+		}
 		
 		Util.VerticalRun(
 			Util.HorizontalRun(true, report.Items
@@ -172,7 +190,7 @@ public partial class TimesheetScript // new
 				.Select(x => BuildHarvestSyncClickable($"{x:dddd MMdd}", y => y.Date == x))
 			),
 			BuildHarvestSyncClickable("Everything", x => true)
-		).Dump($"Sync this timesheet to harvest?: {path} (from {relativeTime})");
+		).Dump($"Sync this timesheet to harvest?: {path} ({relativeTime})");
 		
 		Hyperlinq BuildHarvestSyncClickable(string header, Func<TimeReport.TaskItem, bool> filter)
 		{
@@ -731,11 +749,18 @@ public partial class HarvestApiEndpoint
 
 	protected override HttpClient CreateHttpClient()
 	{
+		if (config.Secrets?.IsValid() != true)
+		{
+			var configScriptPath = Path.Combine(Util.CurrentQuery.Location, "duration calculator.config.linq");
+			Util.HorizontalRun(true, "Please use", new Hyperlinq(configScriptPath, Path.GetFileName(configScriptPath)), "to add your Harvest PAT.").Dump("Secrets not found");
+			throw new InvalidOperationException("Secrets not found.");
+		}
+		
 		var client = new HttpClient();
 		client.BaseAddress = BaseAddress;
-		client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.Secrets?.HarvestPAT.MarshalToString()}");
-		client.DefaultRequestHeaders.Add("Harvest-Account-Id", config.Secrets?.HarvestAccountID);
-		client.DefaultRequestHeaders.Add("User-agent", "duration-calculator");
+		client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.Secrets.HarvestPAT.MarshalToString()}");
+		client.DefaultRequestHeaders.Add("Harvest-Account-Id", config.Secrets.HarvestAccountID);
+		client.DefaultRequestHeaders.Add("User-agent", "duration-calculator (xiaoyao312@gmail.com, https://github.com/Xiaoy312/bag-o-scripts/issues/new)");
 
 		return client;
 	}

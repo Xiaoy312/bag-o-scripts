@@ -64,7 +64,10 @@ private static void SetSecrets()
 		AddProperty<string?>("HarvestAccountID", () => state.HarvestAccountID, x => persistence.Write(state with { HarvestAccountID = x }), x => Util.ReadLine("HarvestAccountID", x));
 		AddProperty<SecureString?>("HarvestPAT", () => state.HarvestPAT, x => persistence.Write(state with { HarvestPAT = x }), x => Util.ReadLine("HarvestAccountID", x.MarshalToString()).ToSecureString(), x => new MaskedNotSoSecureString(x));
 
-		dumpster.Content = editables;
+		dumpster.Content = Util.VerticalRun(
+			Util.HorizontalRun(true, Util.Metatext("Create or view your Harvest PAT here: "), new Hyperlinq("https://id.getharvest.com/developers")),
+			editables
+		);
 	}
 	void CreateNewSecrets()
 	{
@@ -156,6 +159,7 @@ public class ScriptConfig
 public record ScriptSecrets(string? HarvestAccountID, [property: JsonConverter(typeof(SecureStringConverter))] SecureString? HarvestPAT)
 {
 	public static ScriptSecrets Empty => new(null, null);
+	public bool IsValid() => HarvestAccountID?.Length >= 0 && HarvestPAT?.Length >= 0;
 
 	public record DeclassifiedScriptSecrets(string? HarvestAccountID, MaskedNotSoSecureString? HarvestPAT);
 	public DeclassifiedScriptSecrets Declassify() => new(HarvestAccountID, new(HarvestPAT));
