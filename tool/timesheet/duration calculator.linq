@@ -69,6 +69,11 @@ public partial class TimesheetScript
  * [x] harvest api integration
  *		[x] auto linking issue
  * [ ] extract project and task id, and add mappings for them
+ * [ ] view & delete existing timesheet from here
+ * [x] add option to add single day update
+ * [ ] discord linking
+ * [ ] document timesheet syntax
+ * [ ] harvest setup guide
  */
 
 public partial class TimesheetScript // new
@@ -159,24 +164,37 @@ public partial class TimesheetScript // new
 			var n when n > 1 => $"{n} weeks from now",
 			_ => "?",
 		};
-		Clickable.Create("Sync to harvest", async () =>
+		
+		Util.VerticalRun(
+			Util.HorizontalRun(true, report.Items
+				.Select(x => x.Date)
+				.Distinct()
+				.Select(x => BuildHarvestSyncClickable($"{x:dddd MMdd}", y => y.Date == x))
+			),
+			BuildHarvestSyncClickable("Everything", x => true)
+		).Dump($"Sync this timesheet to harvest?: {path} (from {relativeTime})");
+		
+		Hyperlinq BuildHarvestSyncClickable(string header, Func<TimeReport.TaskItem, bool> filter)
 		{
-			if (SafetyCheck("Sync to harvest?"))
+			return Clickable.Create(header, async () =>
 			{
-				var harvest = services.GetRequiredService<HarvestApiEndpoint>();
-				foreach (var item in report.Items)
+				if (SafetyCheck($"Sync {header.RegexReplace("^E", "e")} to harvest?"))
 				{
-					await harvest.AddTimeEntry(new HarvestNewTimeEntry(
-						34393204, // extract to config or add mapping
-						19505120, // extract to config or add mapping
-						item.Date,
-						Math.Max(0.01, item.Duration.TotalHours), // 0 or unspecified will immediately start an timer
-						$"{item.EventSource?.ToString() ?? "no-event-source"}: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
-						item.EventSource?.ToHarvestExternalReference()
-					));
+					var harvest = services.GetRequiredService<HarvestApiEndpoint>();
+					foreach (var item in report.Items.Where(filter))
+					{
+						await harvest.AddTimeEntry(new HarvestNewTimeEntry(
+							34393204, // extract to config or add mapping
+							19505120, // extract to config or add mapping
+							item.Date,
+							Math.Max(0.01, item.Duration.TotalHours), // 0 or unspecified will immediately start an timer
+							$"{item.EventSource?.ToString() ?? "no-event-source"}: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
+							item.EventSource?.ToHarvestExternalReference()
+						));
+					}
 				}
-			}
-		}).Dump($"Sync this timesheet from {date} ({relativeTime}) to harvest");
+			});
+		}
 	}
 
 	private static bool SafetyCheck(string prompt, bool @throw = true)
@@ -184,7 +202,7 @@ public partial class TimesheetScript // new
 		var random = new Random();
 
 		var operands = new int[] { random.Next(1, 9), random.Next(1, 9) };
-		var answer = Util.ReadLine(prompt + $": Answer ({string.Join("+", operands)}) to continue:".Dump()).Dump();
+		var answer = Util.ReadLine($"Answer ({operands.JoinBy('+')}) to continue: {prompt}".Dump()).Dump();
 		var result = answer == operands.Sum().ToString();
 		if (!result)
 		{
@@ -1043,9 +1061,6 @@ public static class HttpClientExtensions
 		//response.EnsureSuccessStatusCode();
 		if (!response.IsSuccessStatusCode)
 		{
-			response.Dump();
-			response.RequestMessage?.Content?.ReadAsStringAsync().Dump();
-			
 			throw new HttpResponseException2(
 				response.StatusCode,
 				$"Response status code does not indicate success: {(int)response.StatusCode} ({response.ReasonPhrase}).");
