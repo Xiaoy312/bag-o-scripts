@@ -173,7 +173,7 @@ public partial class TimesheetScript // new
 		//report.Items.Select(item => new
 		//{
 		//	item.Date,
-		//	Note = $"{item.EventSource?.ToString() ?? "no-event-source"}: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
+		//	Note = FormatNote(item),
 		//	Hours = Math.Max(0.01, item.Duration.TotalHours).ToString("F2"),
 		//}).Dump(0);
 		
@@ -206,12 +206,34 @@ public partial class TimesheetScript // new
 							19505120, // extract to config or add mapping
 							item.Date,
 							Math.Max(0.01, item.Duration.TotalHours), // 0 or unspecified will immediately start an timer
-							$"{item.EventSource?.ToString() ?? "no-event-source"}: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
-							item.EventSource?.ToHarvestExternalReference()
+							FormatNote(item),
+							FormatExternalReference(item.EventSource)
 						));
 					}
 				}
 			});
+		}
+		string FormatNote(TimeReport.TaskItem item)
+		{
+			// note: there is another tool, outside of our control, that parses this property.
+			// and, it demands the part before `:` should contain none of "@#%" unless it is a github hotlink
+			return item.EventSource?.Type switch
+			{
+				EventSource.EventSourceType.Github => $"{item.EventSource}: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
+				// see comment above
+				// EventSource.EventSourceType.Discord => item.Text,
+				_ => $"no-github-item: {item.Text}",
+			};
+		}
+		HarvestExternalReference? FormatExternalReference(EventSource? source)
+		{
+			return source?.Type switch
+			{
+				EventSource.EventSourceType.Github when source.ExpandedSource!.Match(@"^(.+)\#(\d+)$") is { } m => HarvestExternalReference.FromUrl(m.Result("https://github.com/$1/issues/$2")),
+				// EventSource.EventSourceType.Discord when (is #message_id and not @username)... => link to chat
+				// ^ the discord direct url is quite long actually, we should just have an override for url, like "asd: asd // link=google.com/search?q=asd"
+				_ => null,
+			};
 		}
 	}
 
@@ -686,16 +708,6 @@ public record EventSource(EventSource.EventSourceType Type, string Source, strin
 
 		var type = Enum.GetValues<EventSourceType>().FirstOrDefault(x => match.Groups[x.ToString().ToLowerInvariant()].Success);
 		return new EventSource(type, match.Value);
-	}
-
-	public HarvestExternalReference? ToHarvestExternalReference()
-	{
-		return Type switch
-		{
-			EventSourceType.Github when ExpandedSource?.Match(@"^(.+)\#(\d+)$") is { } m => HarvestExternalReference.FromUrl(m.Result("https://github.com/$1/issues/$2")),
-			// EventSourceType.Discord when (is #message_id and not @username)... => link to chat
-			_ => null,
-		};
 	}
 
 	public override string ToString() => ExpandedSource ?? Source;
