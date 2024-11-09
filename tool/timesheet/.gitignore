@@ -1,0 +1,5 @@
+duration calculator.ini
+duration calculator.secrets
+
+# git update-index --skip-worktree "tool/timesheet/duration calculator.ini"
+# git update-index --no-skip-worktree "tool/timesheet/duration calculator.ini"
