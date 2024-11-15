@@ -75,7 +75,8 @@ public partial class TimesheetScript
  * [ ] extract project and task id, and add mappings for them
  * [ ] view & delete existing timesheet from here
  * [x] add option to add single day update
- * [ ] discord linking
+ * [-] ~~discord linking~~
+ * [x] link hardcoding
  * [ ] document timesheet syntax
  * [x] harvest setup guide
  * [ ] project task mapping
@@ -91,7 +92,8 @@ public partial class TimesheetScript // new
 
 	private static void TimesheetParsingTests()
 	{
-		Timesheet.Load($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(0):yyyyMMdd}");
+		//Timesheet.LineToken.Tokenize("1234 qwe // asd").Dump();
+		//Timesheet.Load($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(0):yyyyMMdd}");
 		//Timesheet.Parse("""
 		//	@20240101
 		//	@asd
@@ -149,6 +151,7 @@ public partial class TimesheetScript // new
 		var services = BuildServiceProvider();
 		var config = services.GetRequiredService<ScriptConfig>();
 
+		Util.AutoScrollResults = false;
 		Util.Metatext($"loading timesheet: {path}").Dump();
 		var sheet = Timesheet.Load(path)
 			.ResolveRelativePointers()
@@ -220,18 +223,19 @@ public partial class TimesheetScript // new
 			return item.EventSource?.Type switch
 			{
 				EventSource.EventSourceType.Github => $"{item.EventSource}: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
-				// see comment above
-				// EventSource.EventSourceType.Discord => item.Text,
-				_ => $"no-github-item: {item.Text}",
+				EventSource.EventSourceType.Discord => $"discord: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
+				_ when item.Category.Contains("@#%") => $"no-github-item: {item.Text}",
+				_ => item.Text,
 			};
 		}
 		HarvestExternalReference? FormatExternalReference(EventSource? source)
 		{
 			return source?.Type switch
 			{
-				EventSource.EventSourceType.Github when source.ExpandedSource!.Match(@"^(.+)\#(\d+)$") is { } m => HarvestExternalReference.FromUrl(m.Result("https://github.com/$1/issues/$2")),
-				// EventSource.EventSourceType.Discord when (is #message_id and not @username)... => link to chat
-				// ^ the discord direct url is quite long actually, we should just have an override for url, like "asd: asd // link=google.com/search?q=asd"
+				EventSource.EventSourceType.Github when source.ExpandedSource?.Match(@"^(.+)\#(\d+)$") is { } m => HarvestExternalReference.FromUrl(m.Result("https://github.com/$1/issues/$2")),
+				// discord message link is quite long, hence why it uses the href=... in the commet syntax for linking
+				EventSource.EventSourceType.Discord when source.ExpandedSource?.Contains("discord.com") == true => HarvestExternalReference.FromUrl(source.ExpandedSource),
+				EventSource.EventSourceType.Href when source.ExpandedSource is { } => HarvestExternalReference.FromUrl(source.ExpandedSource),
 				_ => null,
 			};
 		}
@@ -534,7 +538,8 @@ public record Timesheet(string? Path, string RawData, Timesheet.Timeline[] Timel
 		}
 		public static LineToken Parse(string raw, int line)
 		{
-			var text = raw.Split("//", 2)[0].Trim();
+			var parts = raw.Split("//", 2);
+			var text = parts[0].Trim();
 
 			if (string.IsNullOrEmpty(text) || text.StartsWith("//")) return new EmptyToken(line, raw);
 			if (text.StartsWith('@'))
@@ -555,7 +560,7 @@ public record Timesheet(string? Path, string RawData, Timesheet.Timeline[] Timel
 				if (time % 100 >= 60) return Error($"Invalid time marker: {timePart} is not a valid time");
 				if (text.Length < 6 || text[4] != ' ') return Error($"Invalid time marker: description missing");
 
-				return new TimeToken(line, raw, new TimeSpan(time / 100, time % 100, 0), text[5..]);
+				return new TimeToken(line, raw, new TimeSpan(time / 100, time % 100, 0), text[5..], Comment: parts.ElementAtOrDefault(1)?.Trim());
 			}
 
 			return Error("Invalid syntax");
@@ -564,7 +569,7 @@ public record Timesheet(string? Path, string RawData, Timesheet.Timeline[] Timel
 		}
 	}
 	internal record DateToken(int Line, string Raw, DateTime Date) : LineToken(Line, Raw);
-	internal record TimeToken(int Line, string Raw, TimeSpan Time, string Description) : LineToken(Line, Raw);
+	internal record TimeToken(int Line, string Raw, TimeSpan Time, string Description, string? Comment = null) : LineToken(Line, Raw);
 	internal record EmptyToken(int Line, string Raw) : LineToken(Line, Raw);
 	internal record InvalidLineToken(int Line, string Raw, string Error) : LineToken(Line, Raw);
 
@@ -597,7 +602,7 @@ public record Timesheet(string? Path, string RawData, Timesheet.Timeline[] Timel
 			}
 
 			var entries = times
-				.Pairwise((current, next) => new TimeEntry(current.Line, current.Time, next.Time, current.Description))
+				.Pairwise((current, next) => new TimeEntry(current.Line, current.Time, next.Time, current.Description, Comment: current.Comment))
 				.ToArray();
 			if (entries.FirstOrDefault(x => (x.End - x.Start) < TimeSpan.Zero) is { } negative)
 			{
@@ -607,7 +612,7 @@ public record Timesheet(string? Path, string RawData, Timesheet.Timeline[] Timel
 			return new(date.Line, date.Date, entries);
 		}
 	}
-	public record TimeEntry(int Line, TimeSpan Start, TimeSpan End, string Text, string? ResolvedText = null);
+	public record TimeEntry(int Line, TimeSpan Start, TimeSpan End, string Text, string? ResolvedText = null, string? Comment = null);
 }
 public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 {
@@ -635,9 +640,12 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 				.ToArray()
 		};
 
-		EventSource? FindEventSource(TaskItem x) => EventSource.TryExtractFrom(x.Category) ?? EventSource.TryExtractFrom(x.Text);
+		EventSource? FindEventSource(TaskItem x) => 
+			//EventSource.TryExtractFrom(x.Category) ?? EventSource.TryExtractFrom(x.Text);
+			EventSource.TryExtractFrom(x.Category, x.Text, x.Comment);
 		EventSource? RemapSource(EventSource? source)
 		{
+			// expand repo name from shortcut to full form
 			if (githubMappings is { } &&
 				source is { Type: EventSource.EventSourceType.Github } github &&
 				github.Source.Split('#', 2) is [var prefix, var suffix] &&
@@ -659,7 +667,7 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 				Duration = g.Sum(x => x.Duration),
 				Blocks = g
 			})
-			.Dump("Summary", 0);
+			.Dump("Summary", 1);
 
 		Clickable.Create("Pie Chart", () => Items.GroupBy(x => x.Category)
 			.Chart(g => g.Key, g => g.Sum(x => x.Duration).TotalHours, LINQPad.Util.SeriesType.Pie)
@@ -698,10 +706,22 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 		public required Timesheet.TimeEntry[] Entries { get; init; }
 
 		internal string Text => Entries.FirstOrDefault()?.Text ?? string.Empty;
+		internal string Comment => Entries.FirstOrDefault()?.Comment ?? string.Empty;
 	}
 }
 public record EventSource(EventSource.EventSourceType Type, string Source, string? ExpandedSource = null)
 {
+	public static EventSource? TryExtractFrom(string category, string text, string? comment)
+	{
+		var source = TryExtractFrom(category) ?? TryExtractFrom(text);
+		if (comment?.Match(@"(?<=^|\w)href=(?<href>[^ ]+)") is { Success: true } match)
+		{
+			source ??= new(EventSourceType.Href, match.Value);
+			source = source with { ExpandedSource = match.Groups["href"].Value };
+		}
+		
+		return source;
+	}
 	public static EventSource? TryExtractFrom(string text)
 	{
 		if (Pattern.Match(text) is not { Success: true } match) return null;
@@ -713,7 +733,7 @@ public record EventSource(EventSource.EventSourceType Type, string Source, strin
 	public override string ToString() => ExpandedSource ?? Source;
 	private object ToDump() => Util.OnDemand(Source, () => this);
 
-	public enum EventSourceType { Unknown, Github, Discord, }
+	public enum EventSourceType { Unknown, Github, Discord, Href }
 	private static readonly Regex Pattern = new("""
 		(?<=^|\W)(
 			(?<github>[\w\-\.]*\#\d+) |
