@@ -36,12 +36,15 @@ public partial class TimesheetScript
 
 	public static async Task NewMain()
 	{
-		//InitializeJsonSerializer();
 		//TimesheetParsingTests();
 		//TimesheetProcessingTests();
 		//await HarvestApiTest();
+		
+		//ProcessTimesheet($@"D:\documents\timesheets\20241014");
 		//ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(-7):yyyyMMdd}");
-		ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(+0):yyyyMMdd}");
+		//ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(+0):yyyyMMdd}");
+		
+		GenerateMonthlySummary(2025, 3, [@"D:\documents\timesheets\", @"D:\documents\timesheets\time-archives\2025"]);
 	}
 
 	public static void LegacyMain()
@@ -80,6 +83,7 @@ public partial class TimesheetScript
  * [ ] document timesheet syntax
  * [x] harvest setup guide
  * [ ] project task mapping
+ * [ ] managing existing harvest entries (batch delete from specific day/week, compare+update)
  */
 
 public partial class TimesheetScript // new
@@ -146,6 +150,7 @@ public partial class TimesheetScript // new
 		//var settings = new JsonSerializerSettings { ContractResolver = new DefaultContractResolver() };
 		//JsonConvert.SerializeObject(new ScriptSecrets("qwe", "asd".ToSecureString()), settings).DumpTell();
 	}
+
 	private static void ProcessTimesheet(string path)
 	{
 		var services = BuildServiceProvider();
@@ -239,6 +244,29 @@ public partial class TimesheetScript // new
 				_ => null,
 			};
 		}
+	}
+	private static void GenerateMonthlySummary(int year, int month, params string[] lookupDirectories)
+	{
+		var w0 = new DateTime(year, month, 1).FindMonday().ToString("yyyyMMdd");
+		var files = lookupDirectories
+			.SelectMany(Directory.GetFiles)
+			.Select(x => new { Name = Path.GetFileName(x), FullName = x })
+			// other than first week whose monday is in last month, the rest should be in this month
+			.Where(x => x.Name == w0 || x.Name.StartsWith($"{year:D4}{month:D2}"));
+		
+		var services = BuildServiceProvider();
+		var config = services.GetRequiredService<ScriptConfig>();
+
+		Util.AutoScrollResults = false;
+		var sheets = new List<Timesheet>();
+		foreach (var item in files)
+		{
+			Util.Metatext($"loading timesheet: {item.FullName}").Dump();
+			sheets.Add(Timesheet.Load(item.FullName).ResolveRelativePointers());
+		}
+		var report = TimeReport.GenerateFromMany(x => x.Date.Year == year && x.Date.Month == month, sheets);
+		
+		report.DumpSummary();
 	}
 
 	private static bool SafetyCheck(string prompt, bool @throw = true)
@@ -533,7 +561,7 @@ public record Timesheet(string? Path, string RawData, Timesheet.Timeline[] Timel
 		public static LineToken[] Tokenize(string raw)
 		{
 			return raw.Split('\n')
-				.Select(LineToken.Parse)
+				.Select((x, i) => LineToken.Parse(x, i + 1))
 				.ToArray();
 		}
 		public static LineToken Parse(string raw, int line)
@@ -630,6 +658,22 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 
 		return new(sheet, items);
 	}
+	public static TimeReport GenerateFromMany(Predicate<Timesheet.Timeline>? filter = null, params IList<Timesheet> sheets)
+	{
+		var items = sheets
+			.SelectMany(x => x.Timelines)
+			.Where(x => filter?.Invoke(x) ?? true)
+			.SelectMany(timeline => timeline.Entries.Select(x => new { timeline.Date, Task = x }))
+			.GroupBy(x => new { x.Date, Category = (x.Task.ResolvedText ?? x.Task.Text).Split(':', 2)[0] }, (k, g) =>
+				new TaskItem(DateOnly.FromDateTime(k.Date), k.Category, g.Sum(x => x.Task.End - x.Task.Start))
+				{
+					Entries = g.Select(y => y.Task).ToArray()
+				})
+			.Where(x => x.Category.ToLower() != "afk")
+			.ToArray();
+
+		return new(sheets[0], items);
+	}
 
 	public TimeReport ExtractEventSources(IReadOnlyDictionary<string, string>? githubMappings = null)
 	{
@@ -665,9 +709,21 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 			{
 				Date = k,
 				Duration = g.Sum(x => x.Duration),
-				Blocks = g
+				Tasks = g
 			})
 			.Dump("Summary", 1);
+		Items
+			.GroupBy(x => x.Category, (k, g) => new
+			{
+				Category = k, 
+				Total = g.Sum(x => x.Duration),
+				Days = g.GroupBy(x => x.Date, (k2, g2) => new { Date = k2, Duration = g2.Sum(y => y.Duration) }),
+				Entries = g.SelectMany(x => x.Entries),
+			})
+			.OrderByDescending(x => x.Category.Contains("#")) // linked item top
+			.ThenBy(x => x.Category.StartsWith("#")) // uno items under other repo items
+			.ThenBy(x => x.Category)
+			.Dump("Aggregated Summary", 0);
 
 		Clickable.Create("Pie Chart", () => Items.GroupBy(x => x.Category)
 			.Chart(g => g.Key, g => g.Sum(x => x.Duration).TotalHours, LINQPad.Util.SeriesType.Pie)
@@ -731,7 +787,7 @@ public record EventSource(EventSource.EventSourceType Type, string Source, strin
 	}
 
 	public override string ToString() => ExpandedSource ?? Source;
-	private object ToDump() => Util.OnDemand(Source, () => this);
+	private object ToDump() => Util.OnDemand((ExpandedSource == null ? "[unmapped]" : null) + Source , () => this);
 
 	public enum EventSourceType { Unknown, Github, Discord, Href }
 	private static readonly Regex Pattern = new("""
