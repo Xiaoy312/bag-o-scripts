@@ -39,12 +39,14 @@ public partial class TimesheetScript
 		//TimesheetParsingTests();
 		//TimesheetProcessingTests();
 		//await HarvestApiTest();
-		
+
 		//ProcessTimesheet($@"D:\documents\timesheets\20241014");
+
 		//ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(-7):yyyyMMdd}");
 		//ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(+0):yyyyMMdd}");
-		
-		GenerateMonthlySummary(2025, 3, [@"D:\documents\timesheets\", @"D:\documents\timesheets\time-archives\2025"]);
+		ProcessTimesheet($@"D:\documents\timesheets\{(DateTime.Today == DateHelper.ThisMonday ? DateHelper.LastMonday : DateHelper.ThisMonday):yyyyMMdd}");
+
+		//GenerateMonthlySummary(DateHelper.LastMonth.Year, DateHelper.LastMonth.Month, [@"D:\documents\timesheets\", $@"D:\documents\timesheets\time-archives\{DateHelper.LastMonth.Year}"]);
 	}
 
 	public static void LegacyMain()
@@ -73,16 +75,13 @@ public partial class TimesheetScript
  * [x] in day/week report: % of an item
  * cross weeks search function
  * [x] refactor
- * [x] harvest api integration
- *		[x] auto linking issue
  * [ ] extract project and task id, and add mappings for them
- * [ ] view & delete existing timesheet from here
  * [x] add option to add single day update
  * [-] ~~discord linking~~
  * [x] link hardcoding
  * [ ] document timesheet syntax
- * [x] harvest setup guide
- * [ ] project task mapping
+ * [ ] bamboo setup guide
+ * [ ] bamboo api integration
  * [ ] managing existing harvest entries (batch delete from specific day/week, compare+update)
  */
 
@@ -715,7 +714,8 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 		Items
 			.GroupBy(x => x.Category, (k, g) => new
 			{
-				Category = k, 
+				Category = k,
+				EventSource = g.First().EventSource,
 				Total = g.Sum(x => x.Duration),
 				Days = g.GroupBy(x => x.Date, (k2, g2) => new { Date = k2, Duration = g2.Sum(y => y.Duration) }),
 				Entries = g.SelectMany(x => x.Entries),
@@ -758,6 +758,7 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 
 	public record TaskItem(DateOnly Date, string Category, TimeSpan Duration)
 	{
+		public double DurationHrs => Math.Round(Duration.TotalHours, 2);
 		public EventSource? EventSource { get; init; }
 		public required Timesheet.TimeEntry[] Entries { get; init; }
 
@@ -1099,7 +1100,10 @@ public static class DateHelper
 {
 	public static DateOnly TodayOnly => DateOnly.FromDateTime(DateTime.Today);
 
+	public static DateTime LastMonday => ThisMonday.AddDays(-7);
 	public static DateTime ThisMonday => DateTime.Today.FindMonday();
+	
+	public static DateTime LastMonth => DateTime.Today.AddMonths(-1);
 
 	public static int GetWeeksFrom(this DateOnly date, DateOnly reference) => (date.FindMonday().DayNumber - reference.FindMonday().DayNumber) / 7;
 
