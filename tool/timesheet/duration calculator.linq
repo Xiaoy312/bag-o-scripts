@@ -25,49 +25,22 @@
 #define DUMP_JSON_AS_OBJECT
 
 /* PLEASE READ: // TODO
-	- run duration calculator.config.linq and add your harvest access token
+	- run duration calculator.config.linq and add your BambooHR Api Key
 */
 
 public partial class TimesheetScript
 {
 	public static async Task Main() =>
-		//LegacyMain();
-		await NewMain();
-
-	public static async Task NewMain()
-	{
 		//TimesheetParsingTests();
 		//TimesheetProcessingTests();
-		//await HarvestApiTest();
+		//await ApiEndpointTest();
 
-		//ProcessTimesheet($@"D:\documents\timesheets\20241014");
+		//await ProcessTimesheet($@"D:\documents\timesheets\20241014");
+		//await ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(-7):yyyyMMdd}");
+		//await ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(+0):yyyyMMdd}");
+		await ProcessTimesheet($@"D:\documents\timesheets\{(DateTime.Today == DateHelper.ThisMonday ? DateHelper.LastMonday : DateHelper.ThisMonday):yyyyMMdd}");
 
-		//ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(-7):yyyyMMdd}");
-		//ProcessTimesheet($@"D:\documents\timesheets\{DateHelper.ThisMonday.AddDays(+0):yyyyMMdd}");
-		ProcessTimesheet($@"D:\documents\timesheets\{(DateTime.Today == DateHelper.ThisMonday ? DateHelper.LastMonday : DateHelper.ThisMonday):yyyyMMdd}");
-
-		//GenerateMonthlySummary(DateHelper.LastMonth.Year, DateHelper.LastMonth.Month, [@"D:\documents\timesheets\", $@"D:\documents\timesheets\time-archives\{DateHelper.LastMonth.Year}"]);
-	}
-
-	public static void LegacyMain()
-	{
-		var thisMonday = DateTime.Today.AddDays(DateTime.Today.DayOfWeek switch
-		{
-			DayOfWeek.Sunday => -6,
-			_ => -(int)DateTime.Today.DayOfWeek + 1
-		});
-
-		//ProcessWeeklyTimesheet($@"D:\documents\timesheets\{thisMonday.AddDays(-14):yyyyMMdd}");
-		//ProcessWeeklyTimesheet2($@"D:\documents\timesheets\{thisMonday.AddDays(-7):yyyyMMdd}", "0000000", "**************************************************************************************");
-		//ProcessWeeklyTimesheet($@"D:\documents\timesheets\{thisMonday:yyyyMMdd}");
-		//ProcessWeeklyTimesheet(@"D:\documents\timesheets\20221205");
-		//ProcessWeeklyTimesheet($@"D:\documents\timesheets\{thisMonday.AddDays(-7):yyyyMMdd}", (category, raw) => "#13680".Split(',').Any(raw.Contains));
-		//ProcessWeeklyTimesheet(@"D:\documents\timesheets\20231016", (category, raw) => "datacontext".Split(',').Any(raw.Contains));
-		//ProcessWeeklyTimesheet(@"D:\documents\timesheets\20240729", (category, raw) => raw.Contains("17695"));
-		//ProcessWeeklyTimesheet($@"D:\documents\timesheets\{thisMonday.AddDays(-7):yyyyMMdd}", (c, r) => c == "uno#w901");
-		//ProcessWeeklyTimesheet($@"D:\documents\timesheets\{thisMonday:yyyyMMdd}", (c, r) => c == "kahua#199");
-		//ProcessWeeklyTimesheet(@"D:\documents\timesheets\time-archives\20211213");
-	}
+	//GenerateMonthlySummary(DateHelper.LastMonth.Year, DateHelper.LastMonth.Month, [@"D:\documents\timesheets\", $@"D:\documents\timesheets\time-archives\{DateHelper.LastMonth.Year}"]);
 }
 /* todo:
  * [x] !!! force github item syntax, "unoplatform/uno#123: description..."
@@ -75,14 +48,14 @@ public partial class TimesheetScript
  * [x] in day/week report: % of an item
  * cross weeks search function
  * [x] refactor
- * [ ] extract project and task id, and add mappings for them
+ * [x] extract project and task id, and add mappings for them
+ *      [x] project task mapping
  * [x] add option to add single day update
  * [-] ~~discord linking~~
  * [x] link hardcoding
  * [ ] document timesheet syntax
- * [ ] bamboo setup guide
- * [ ] bamboo api integration
- * [ ] managing existing harvest entries (batch delete from specific day/week, compare+update)
+ * [x] BambooHR integration
+ * [ ] managing existing BambooHR entries (batch delete from specific day/week, compare+update)
  */
 
 public partial class TimesheetScript // new
@@ -90,7 +63,7 @@ public partial class TimesheetScript // new
 	static partial void InitializeAdditionalServices(IServiceCollection builder)
 	{
 		builder
-			.AddSingleton<HarvestApiEndpoint>();
+			.AddSingleton<BambooApi>();
 	}
 
 	private static void TimesheetParsingTests()
@@ -119,41 +92,44 @@ public partial class TimesheetScript // new
 		sheet.Dump(null, 0, exclude: "RawData");
 
 		var report = TimeReport.GenerateFrom(sheet)
-			.ExtractEventSources(config.GithubMappings);
+			.MapGithubEventSources(config.GithubMappings);
 
-		report.DumpSummary();
+		report.DumpBasicSummary();
+		report.DumpFullSummary();
 	}
-	private static async Task HarvestApiTest()
+	private static async Task ApiEndpointTest()
 	{
 		var services = BuildServiceProvider();
 
-		var harvest = services.GetRequiredService<HarvestApiEndpoint>();
-		//await harvest.GetCurrentUserAsync().DumpJson(0).DumpContent();
-		//await harvest.AddTimeEntry(new HarvestNewTimeEntry(00000000, 00000000, DateHelper.TodayOnly, 0.1, "test", HarvestExternalReference.FromUrl("https://help.getharvest.com/api-v2/timesheets-api/timesheets/time-entries/"))).Dump();
+		var config = services.GetRequiredService<ScriptConfig>();
+		var bamboo = services.GetRequiredService<BambooApi>();
 
-		var results = await harvest.GetProjectAssignmentsAsync().Unwrap();
-		results.ProjectAssignments
-			.SelectMany(pa => pa.TaskAssignments.Select(t => new
-			{
-				ProjectId = pa.Project.Id,
-				ProjectCode = pa.Project.Code,
-				ProjectName = pa.Project.Name,
-				TaskId = t.Task.Id,
-				TaskName = t.Task.Name,
-			}))
-			.Dump();
+		var results = bamboo.GetEmployees().Dump();
+		//var results = bamboo.GetEmployeeProjects(config.Secrets!.BambooUserID!).Dump();
+		//var results = await bamboo.GetProjectAssignmentsAsync().Unwrap();
+		//results.ProjectAssignments
+		//	.SelectMany(pa => pa.TaskAssignments.Select(t => new
+		//	{
+		//		ProjectId = pa.Project.Id,
+		//		ProjectCode = pa.Project.Code,
+		//		ProjectName = pa.Project.Name,
+		//		TaskId = t.Task.Id,
+		//		TaskName = t.Task.Name,
+		//	}))
+		//	.Dump();
 
 		//var persistence = services.GetRequiredService<IPersistenceService>();
 		//(persistence.Read<ScriptSecrets>().Dump()?.Declassify()).Dump();
-		
+
 		//var settings = new JsonSerializerSettings { ContractResolver = new DefaultContractResolver() };
 		//JsonConvert.SerializeObject(new ScriptSecrets("qwe", "asd".ToSecureString()), settings).DumpTell();
 	}
 
-	private static void ProcessTimesheet(string path)
+	private static async Task ProcessTimesheet(string path)
 	{
 		var services = BuildServiceProvider();
 		var config = services.GetRequiredService<ScriptConfig>();
+		var bamboo = services.GetRequiredService<BambooApi>();
 
 		Util.AutoScrollResults = false;
 		Util.Metatext($"loading timesheet: {path}").Dump();
@@ -161,10 +137,8 @@ public partial class TimesheetScript // new
 			.ResolveRelativePointers()
 			.Dump(null, 0);
 		var report = TimeReport.GenerateFrom(sheet)
-			.ExtractEventSources(config.GithubMappings)
 			.Dump(null, 0);
-
-		report.DumpSummary();
+		report.DumpBasicSummary();
 
 		var date = report.Items.Min(x => x.Date);
 		var relativeTime = date.GetWeeksFrom(DateHelper.TodayOnly) switch
@@ -176,70 +150,94 @@ public partial class TimesheetScript // new
 			var n when n > 1 => $"from {n} weeks from now",
 			_ => $"from week of {date:yyyyMMdd}",
 		};
-		
-		//report.Items.Select(item => new
-		//{
-		//	item.Date,
-		//	Note = FormatNote(item),
-		//	Hours = Math.Max(0.01, item.Duration.TotalHours).ToString("F2"),
-		//}).Dump(0);
-		
+
 		if (config.Secrets?.IsValid() != true)
 		{
 			var configScriptPath = Path.Combine(Util.CurrentQuery.Location, "duration calculator.config.linq");
-			Util.HorizontalRun(true, "Please use", new Hyperlinq(configScriptPath, Path.GetFileName(configScriptPath)), "to add your Harvest PAT.").Dump("Secrets not found");
+			Util.HorizontalRun(true, "Please use", new Hyperlinq(configScriptPath, Path.GetFileName(configScriptPath)), "to add your Bamboo Api Key.").Dump("Secrets not found");
 		}
-		
+
+		const string BambooProjectArrayCacheKey = nameof(BambooProjectArrayCacheKey);
+		BambooProject[]? bambooProjects = [];
+		try
+		{
+			bambooProjects = await ApiEndpointBase.CachedQuery(FetchProjects, BambooProjectArrayCacheKey, forceFetch: false, out var cached).Unwrap()
+				.Dump($"projects: (cached = {cached})", 0);
+		}
+		catch (Exception ex)
+		{
+			if (ex.Message.Contains("Add the [Serializable] attribute to this type to make it cacheable."))
+				Util.Metatext("just Ctrl+Shift+F5 when getting UncacheableObjectException & [Serializable]").Dump();
+		}
+
+		report = report
+			.MapGithubEventSources(config.GithubMappings)
+			.MapBambooProjects(config.BambooMappings, bambooProjects);
+		report.DumpFullSummary();
+
 		Util.VerticalRun(
 			Util.HorizontalRun(true, report.Items
 				.Select(x => x.Date)
 				.Distinct()
-				.Select(x => BuildHarvestSyncClickable($"{x:dddd MMdd}", y => y.Date == x))
+				.Select(x => BuildBambooSyncClickable($"{x:dddd MMdd}", y => y.Date == x))
 			),
-			BuildHarvestSyncClickable("Everything", x => true)
-		).Dump($"Sync this timesheet to harvest?: {path} ({relativeTime})");
-		
-		Hyperlinq BuildHarvestSyncClickable(string header, Func<TimeReport.TaskItem, bool> filter)
+			BuildBambooSyncClickable("Everything", x => true)
+		).Dump($"Sync this timesheet to BambooHR?: {path} ({relativeTime})");
+
+		Task<JsonArray<BambooProject>> FetchProjects() => bamboo.GetEmployeeProjects(config.Secrets!.BambooUserID!);
+		Hyperlinq BuildBambooSyncClickable(string header, Func<TimeReport.TaskItem, bool> filter)
 		{
 			return Clickable.Create(header, async () =>
 			{
-				if (SafetyCheck($"Sync {header.RegexReplace("^E", "e")} to harvest?"))
+				if (SafetyCheck($"Sync {header.RegexReplace("^E", "e")} to BambooHR?"))
 				{
-					var harvest = services.GetRequiredService<HarvestApiEndpoint>();
-					foreach (var item in report.Items.Where(filter))
-					{
-						await harvest.AddTimeEntry(new HarvestNewTimeEntry(
-							34393204, // extract to config or add mapping
-							19505120, // extract to config or add mapping
-							item.Date,
-							Math.Max(0.01, item.Duration.TotalHours), // 0 or unspecified will immediately start an timer
-							FormatNote(item),
-							FormatExternalReference(item.EventSource)
-						));
-					}
+					var hours = report.Items
+						.Where(filter)
+						.Select((x, i) => new BambooHour(
+							Id: null,
+							DailyEntryId: i,
+							EmployeeId: config.Secrets!.BambooUserID!,
+							Date: x.Date,
+							Hours: x.Duration.TotalHours,
+							ProjectId: x.BambooSource?.Project.Id,
+							TaskId: x.BambooSource?.Task.Id,
+							Note: FormatNote(x)
+						))
+						.ToArray();
+
+					Util.VerticalRun(
+						hours.OnDemand(),
+						Util.OnDemand("json", () => bamboo.JsonSerialize(hours))
+					).Dump(header, 1);
+
+					await bamboo.AddTime(hours);
 				}
 			});
 		}
-		string FormatNote(TimeReport.TaskItem item)
+		string? FormatNote(TimeReport.TaskItem item)
 		{
 			// note: there is another tool, outside of our control, that parses this property.
 			// and, it demands the part before `:` should contain none of "@#%" unless it is a github hotlink
-			return item.EventSource?.Type switch
+			var line1 = item.EventSource?.Type switch
 			{
 				EventSource.EventSourceType.Github => $"{item.EventSource}: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
 				EventSource.EventSourceType.Discord => $"discord: {(item.EventSource?.Source == item.Category ? item.Text.Substring(item.Category.Length + 1).Trim() : item.Text)}",
-				_ when item.Category.Contains("@#%") => $"no-github-item: {item.Text}",
+				_ when item.Category.Contains("@#%") =>
+					$"no-github-item: {item.Text}",
 				_ => item.Text,
 			};
+			var line2 = FormatExternalLink(item.EventSource);
+
+			return line2 is { } ? string.Join("\n", line1, line2) : line1;
 		}
-		HarvestExternalReference? FormatExternalReference(EventSource? source)
+		string? FormatExternalLink(EventSource? source)
 		{
 			return source?.Type switch
 			{
-				EventSource.EventSourceType.Github when source.ExpandedSource?.Match(@"^(.+)\#(\d+)$") is { } m => HarvestExternalReference.FromUrl(m.Result("https://github.com/$1/issues/$2")),
+				EventSource.EventSourceType.Github when source.ExpandedSource?.Match(@"^(.+)\#(\d+)$") is { } m => m.Result("https://github.com/$1/issues/$2"),
 				// discord message link is quite long, hence why it uses the href=... in the commet syntax for linking
-				EventSource.EventSourceType.Discord when source.ExpandedSource?.Contains("discord.com") == true => HarvestExternalReference.FromUrl(source.ExpandedSource),
-				EventSource.EventSourceType.Href when source.ExpandedSource is { } => HarvestExternalReference.FromUrl(source.ExpandedSource),
+				EventSource.EventSourceType.Discord when source.ExpandedSource?.Contains("discord.com") == true => source.ExpandedSource,
+				EventSource.EventSourceType.Href when source.ExpandedSource is { } => source.ExpandedSource,
 				_ => null,
 			};
 		}
@@ -252,7 +250,7 @@ public partial class TimesheetScript // new
 			.Select(x => new { Name = Path.GetFileName(x), FullName = x })
 			// other than first week whose monday is in last month, the rest should be in this month
 			.Where(x => x.Name == w0 || x.Name.StartsWith($"{year:D4}{month:D2}"));
-		
+
 		var services = BuildServiceProvider();
 		var config = services.GetRequiredService<ScriptConfig>();
 
@@ -264,8 +262,9 @@ public partial class TimesheetScript // new
 			sheets.Add(Timesheet.Load(item.FullName).ResolveRelativePointers());
 		}
 		var report = TimeReport.GenerateFromMany(x => x.Date.Year == year && x.Date.Month == month, sheets);
-		
-		report.DumpSummary();
+
+		report.DumpBasicSummary();
+		report.DumpFullSummary();
 	}
 
 	private static bool SafetyCheck(string prompt, bool @throw = true)
@@ -674,8 +673,10 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 		return new(sheets[0], items);
 	}
 
-	public TimeReport ExtractEventSources(IReadOnlyDictionary<string, string>? githubMappings = null)
+	public TimeReport MapGithubEventSources(IReadOnlyDictionary<string, string>? githubMappings)
 	{
+		if (githubMappings?.Count is not > 0) return this;
+
 		return this with
 		{
 			Items = Items
@@ -683,7 +684,7 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 				.ToArray()
 		};
 
-		EventSource? FindEventSource(TaskItem x) => 
+		EventSource? FindEventSource(TaskItem x) =>
 			//EventSource.TryExtractFrom(x.Category) ?? EventSource.TryExtractFrom(x.Text);
 			EventSource.TryExtractFrom(x.Category, x.Text, x.Comment);
 		EventSource? RemapSource(EventSource? source)
@@ -700,8 +701,50 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 			return source;
 		}
 	}
+	public TimeReport MapBambooProjects(IReadOnlyDictionary<string, string>? bambooMappings, BambooProject[]? projects)
+	{
+		if ((bambooMappings?.Count is not > 0) || (projects?.Length is not > 0)) return this;
 
-	public void DumpSummary()
+		return this with
+		{
+			Items = Items
+				.Select(x => x with { BambooSource = FindBambooSource(x) })
+				.ToArray()
+		};
+
+		BambooSource? FindBambooSource(TaskItem x)
+		{
+			var key = x.EventSource is EventSource { Type: EventSource.EventSourceType.Github } github
+				? github.ExpandedSource?.RegexReplace(@"#\d+$", "") : default;
+			if (key is { } && bambooMappings.TryGetValue(key, out var text)) return MapBambooSource(text);
+			if (bambooMappings.TryGetValue("", out var text2)) return MapBambooSource(text2);
+
+			return default;
+		}
+		BambooSource? MapBambooSource(string text)
+		{
+			if (text.Split('\\', 2) is [var project, var task] &&
+				projects.FirstOrDefault(x => x.Name == project) is { } p &&
+				p.Tasks.FirstOrDefault(x => x.Name == task) is { } t)
+			{
+				return new(p, t);
+			}
+			return default;
+		}
+	}
+
+	public void DumpBasicSummary()
+	{
+		Items
+			.GroupBy(x => x.Date, (k, g) => new
+			{
+				Date = k,
+				Duration = g.Sum(x => x.Duration),
+				Tasks = g
+			})
+			.Dump("Summary (unpopulated)", 0);
+	}
+	public void DumpFullSummary()
 	{
 		Items
 			.GroupBy(x => x.Date, (k, g) => new
@@ -716,6 +759,7 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 			{
 				Category = k,
 				EventSource = g.First().EventSource,
+				BambooSource = g.First().BambooSource,
 				Total = g.Sum(x => x.Duration),
 				Days = g.GroupBy(x => x.Date, (k2, g2) => new { Date = k2, Duration = g2.Sum(y => y.Duration) }),
 				Entries = g.SelectMany(x => x.Entries),
@@ -760,6 +804,7 @@ public record TimeReport(Timesheet Timesheet, TimeReport.TaskItem[] Items)
 	{
 		public double DurationHrs => Math.Round(Duration.TotalHours, 2);
 		public EventSource? EventSource { get; init; }
+		public BambooSource? BambooSource { get; init; }
 		public required Timesheet.TimeEntry[] Entries { get; init; }
 
 		internal string Text => Entries.FirstOrDefault()?.Text ?? string.Empty;
@@ -776,7 +821,7 @@ public record EventSource(EventSource.EventSourceType Type, string Source, strin
 			source ??= new(EventSourceType.Href, match.Value);
 			source = source with { ExpandedSource = match.Groups["href"].Value };
 		}
-		
+
 		return source;
 	}
 	public static EventSource? TryExtractFrom(string text)
@@ -788,7 +833,7 @@ public record EventSource(EventSource.EventSourceType Type, string Source, strin
 	}
 
 	public override string ToString() => ExpandedSource ?? Source;
-	private object ToDump() => Util.OnDemand((ExpandedSource == null ? "[unmapped]" : null) + Source , () => this);
+	private object ToDump() => Util.OnDemand((ExpandedSource == null ? "[unmapped]" : null) + Source, () => this);
 
 	public enum EventSourceType { Unknown, Github, Discord, Href }
 	private static readonly Regex Pattern = new("""
@@ -798,88 +843,129 @@ public record EventSource(EventSource.EventSourceType Type, string Source, strin
 		)\b
 	""", RegexOptions.IgnorePatternWhitespace);
 }
-
-public partial class HarvestApiEndpoint(ScriptConfig config) : ApiEndpointBase
+public record BambooSource(BambooProject Project, BambooTask Task)
 {
+	private object ToDump() => Util.OnDemand($"{Project.Name}\\{Task.Name}", () => this);
+}
+
+public partial class BambooApi(ScriptConfig config) : ApiEndpointBase
+{
+	public const string CompanyDomain = "unoplatform";
+	public readonly Uri BaseAddress = new Uri($"https://api.bamboohr.com/api/gateway.php/{CompanyDomain}/v1/");
+
+	// https://documentation.bamboohr.com/reference
+	// https://openapi.bamboohr.io/main/latest/docs/openapi/public-openapi.yaml
+
 	public async Task Test()
 	{
-		(await QueryJson<HarvestProjectAssignments>(q => q
-			.Get().AppendPath("users/me/project_assignments")
-		)).DumpJson(0).Dump(0);
+		//await Query(x => x.Get().AppendPath($"v1/employees/directory")).ReadAsJObject().Dump();
+		//await QueryJsonArray<object>(x => x.Get().AppendPath($"v1/time_tracking/timesheet_entries")
+		//	.JsonPayload(new { start = "2025-08-25", end = "2025-08-26", employeeIds = string.Join(",", 136) })
+		//).Dump();
+		//await QueryJsonArray<BambooProject>(x => x.Get().AppendPath("v1/time_tracking/employees/136/projects")).Dump();
 	}
 
-	public async Task<Json<HarvestUser>> GetCurrentUserAsync()
+	public Task<Json<T>> GetObject<T>(string path)
 	{
-		return await QueryJson<HarvestUser>(q => q
-			.Get().AppendPath("users/me")
-		);
+		return QueryJson<T>(x => x.Get().AppendPath(path));
+	}
+	public Task<JsonArray<object>> GetList(string path)
+	{
+		return QueryJsonArray<object>(x => x.Get().AppendPath(path));
 	}
 
-	public async Task<Json<object>> AddTimeEntry(HarvestNewTimeEntry entry)
+	public async Task<BambooEmployee[]> GetEmployees()
 	{
-		return await QueryJson<object>(q => q
-			.Post()
-			.AppendPath("time_entries")
-			.JsonPayload(entry)
-		);
-	}
+		var json = await QueryJson<object>(x => x.Get().AppendPath("employees/directory"));
 
-	public async Task<Json<HarvestProjectAssignments>> GetProjectAssignmentsAsync()
+		return json["employees"]!.ToObject<BambooEmployee[]>()!;
+	}
+	public Task<JsonArray<BambooProject>> GetEmployeeProjects(string employeeId)
 	{
-		return await QueryJson<HarvestProjectAssignments>(q => q
-			.Get().AppendPath("users/me/project_assignments")
-		);
+		// https://web.archive.org/web/20250319095612/https://documentation.bamboohr.com/reference/get-employee-projects-1
+		return QueryJsonArray<BambooProject>(x => x.Get().AppendPath($"time_tracking/employees/{employeeId}/projects"));
+	}
+	public Task<JsonArray<BambooTimeEntry>> AddTime(IEnumerable<BambooHour> entries)
+	{
+		return QueryJsonArray<BambooTimeEntry>(x => x.Post().AppendPath("time_tracking/hour_entries/store").JsonPayload(new { Hours = entries }));
 	}
 }
-public partial class HarvestApiEndpoint
+public partial class BambooApi
 {
-	// https://help.getharvest.com/api-v2/
-	public readonly Uri BaseAddress = new("https://api.harvestapp.com/v2/");
-
 	protected override HttpClient CreateHttpClient()
 	{
 		if (config.Secrets?.IsValid() != true)
 		{
 			var configScriptPath = Path.Combine(Util.CurrentQuery.Location, "duration calculator.config.linq");
-			Util.HorizontalRun(true, "Please use", new Hyperlinq(configScriptPath, Path.GetFileName(configScriptPath)), "to add your Harvest PAT.").Dump("Secrets not found");
+			Util.HorizontalRun(true, "Please use", new Hyperlinq(configScriptPath, Path.GetFileName(configScriptPath)), "to add your BambooHR Api Key.").Dump("Secrets not found");
 			throw new InvalidOperationException("Secrets not found.");
 		}
-		
+
 		var client = new HttpClient();
 		client.BaseAddress = BaseAddress;
-		client.DefaultRequestHeaders.Add("Authorization", $"Bearer {config.Secrets.HarvestPAT.MarshalToString()}");
-		client.DefaultRequestHeaders.Add("Harvest-Account-Id", config.Secrets.HarvestAccountID);
-		client.DefaultRequestHeaders.Add("User-agent", "duration-calculator (xiaoyao312@gmail.com, https://github.com/Xiaoy312/bag-o-scripts/issues/new)");
+		client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", GetAuthorizationKey());
+		client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
 		return client;
+
+		string GetAuthorizationKey() => $"Basic {Convert.ToBase64String(Encoding.ASCII.GetBytes($"{config.Secrets.BambooApiKey.MarshalToString()}:x"))}";
 	}
 	protected override JsonSerializerSettings? CreateJsonSerializerSettings()
 	{
 		var settings = new JsonSerializerSettings()
 		{
-			ContractResolver = new DefaultContractResolver
-			{
-				NamingStrategy = new SnakeCaseNamingStrategy(),
-			},
+			DateFormatString = "yyyy-MM-dd",
+			NullValueHandling = NullValueHandling.Ignore,
+			MissingMemberHandling = MissingMemberHandling.Ignore,
 		};
-		
+		settings.ContractResolver = new CamelCasePropertyNamesContractResolver();
+
 		return settings;
 	}
 }
-public record HarvestUser(int Id, string Email); // https://help.getharvest.com/api-v2/users-api/users/users/
-public record HarvestNewTimeEntry(/*string? UserId = null,*/ int ProjectId, int TaskId, DateOnly SpentDate, double Hours, string? Notes = null, HarvestExternalReference? ExternalReference = null); // https://help.getharvest.com/api-v2/timesheets-api/timesheets/time-entries/#create-a-time-entry-via-duration
-public record HarvestExternalReference(string? Id = null, string? GroupId = null, /*string? AccountId = null,*/ string? Permalink = null)
+public record BambooMetaField(string Id, string Name, string Type, string? Alias);
+public record BambooProject(int Id, string Name, BambooTask[] Tasks);
+public record BambooTask(int Id, string Name);
+public record BambooEmployee // EmployeeDirectoryEmployeeDataObject
 {
-	public static HarvestExternalReference FromUrl(string url) => new(Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), url);
+	public required int Id;
+	public string? DisplayName;
+	//public string? FirstName;
+	//public string? LastName;
+	//public string? PreferredName;
+	public string? JobTitle;
+	public string? MobilePhone;
+	public string? WorkEmail;
+	public string? Department;
+	//public string? Location;
+	//public string? LinkedIn;
+	//public string? TwitterFeed;
+	//public string? Pronouns;
+	public string? Teams;
+	public string? Supervisor;
+	//public bool? PhotoUploaded;
+	//public string? PhotoUrl;
+	//public bool? CanUploadPhoto;
 }
-public record HarvestProjectAssignments(HarvestProjectAssignment[] ProjectAssignments);
-public record HarvestProjectAssignment(int Id, bool IsActive, HarvestProject Project, HarvestTaskAssignment[] TaskAssignments);
-public record HarvestProject(int Id, string Name, string Code);
-public record HarvestTaskAssignment(int Id, HarvestTask Task);
-public record HarvestTask(int Id, string Name);
+public record BambooHour(int? Id, int? DailyEntryId, string EmployeeId, DateOnly Date, double Hours, int? ProjectId, int? TaskId, string? Note);
+public record BambooTimeEntry
+{
+	public int? Id;
+	public int? EmployeeId;
+	//public string? Type;
+	public DateTime? Date;
+	//public string? Start;
+	//public string? End;
+	//public string? Timezone;
+	public string? Note;
+	public BambooProjectInfo? ProjectInfo;
+
+	public record BambooProjectInfo(BambooProject? Project, BambooTask? Task);
+}
 
 public abstract class ApiEndpointBase
 {
+	// fixme@xy: reuse the same http-client instance
 	protected virtual HttpClient CreateHttpClient() => new();
 	protected virtual JsonSerializerSettings? CreateJsonSerializerSettings() => null;
 
@@ -891,16 +977,31 @@ public abstract class ApiEndpointBase
 	}
 	protected Task<Json<T>> QueryJson<T>(Func<QueryBuilder, QueryBuilder> builder) => Query(builder).ReadAsJson<T>(CreateJsonSerializerSettings());
 	protected Task<JsonArray<T>> QueryJsonArray<T>(Func<QueryBuilder, QueryBuilder> builder) => Query(builder).ReadAsJsonArray<T>(CreateJsonSerializerSettings());
+
+	internal string JsonSerialize(object o) => JsonConvert.SerializeObject(o, CreateJsonSerializerSettings());
+
+	public static Task<JsonArray<T>> CachedQuery<T>(Func<Task<JsonArray<T>>> query, string key, bool forceFetch, out bool fromCache)
+	{
+		if (forceFetch)
+		{
+			fromCache = true;
+			return Util.CacheAsync(query, key, true);
+		}
+		else
+		{
+			return Util.CacheAsync(query, key, out fromCache);
+		}
+	}
 }
 public class QueryBuilder
 {
 	private readonly HttpRequestMessage request = new HttpRequestMessage();
 	private readonly JsonSerializerSettings? jsonSerializerSettings = null;
-	
+
 	private Dictionary<string, string> query = new Dictionary<string, string>();
 	private Dictionary<string, string> payload = new Dictionary<string, string>();
 	private (string ContentType, string Json)? jsonPayload;
-	
+
 	public QueryBuilder(JsonSerializerSettings? jsonSerializerSettings = null)
 	{
 		this.jsonSerializerSettings = jsonSerializerSettings;
@@ -967,7 +1068,8 @@ public class QueryBuilder
 					query = "?" + query;
 
 				return query;
-			};
+			}
+			;
 		}
 	}
 }
@@ -1049,6 +1151,10 @@ public static class JsonExtensions
 	{
 		return (await task).Content;
 	}
+	public static async Task<T[]> Unwrap<T>(this Task<JsonArray<T>> task)
+	{
+		return (await task).Items;
+	}
 	public static T DumpJson<T>(this T token, int depth = 1) where T : JToken
 	{
 		token.ToObject().Dump(depth);
@@ -1102,7 +1208,7 @@ public static class DateHelper
 
 	public static DateTime LastMonday => ThisMonday.AddDays(-7);
 	public static DateTime ThisMonday => DateTime.Today.FindMonday();
-	
+
 	public static DateTime LastMonth => DateTime.Today.AddMonths(-1);
 
 	public static int GetWeeksFrom(this DateOnly date, DateOnly reference) => (date.FindMonday().DayNumber - reference.FindMonday().DayNumber) / 7;

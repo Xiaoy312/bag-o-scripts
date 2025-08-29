@@ -61,11 +61,11 @@ private static void SetSecrets()
 				Edit = new Hyperlinq(() => { Set(Edit(Get())); Refresh(); }, "Edit"),
 			});
 		}
-		AddProperty<string?>("HarvestAccountID", () => state.HarvestAccountID, x => persistence.Write(state with { HarvestAccountID = x }), x => Util.ReadLine("HarvestAccountID", x));
-		AddProperty<SecureString?>("HarvestPAT", () => state.HarvestPAT, x => persistence.Write(state with { HarvestPAT = x }), x => Util.ReadLine("HarvestAccountID", x.MarshalToString()).ToSecureString(), x => new MaskedNotSoSecureString(x));
+		AddProperty<string?>("BambooUserID", () => state.BambooUserID, x => persistence.Write(state with { BambooUserID = x }), x => Util.ReadLine("BambooUserID", x));
+		AddProperty<SecureString?>("BambooApiKey", () => state.BambooApiKey, x => persistence.Write(state with { BambooApiKey = x }), x => Util.ReadLine("BambooApiKey", x.MarshalToString()).ToSecureString(), x => new MaskedNotSoSecureString(x));
 
 		dumpster.Content = Util.VerticalRun(
-			Util.HorizontalRun(true, Util.Metatext("Create or view your Harvest PAT here: "), new Hyperlinq("https://id.getharvest.com/developers")),
+			Util.HorizontalRun(true, Util.Metatext("Create or view your BambooHR Api Key here: "), new Hyperlinq("https://unoplatform.bamboohr.com/settings/permissions/api.php")),
 			editables
 		);
 	}
@@ -136,6 +136,7 @@ public class ScriptConfig
 		set => _persistence.Write<ScriptSecrets>(value);
 	}
 	public IReadOnlyDictionary<string, string> GithubMappings { get; }
+	public IReadOnlyDictionary<string, string> BambooMappings { get; }
 
 	public ScriptConfig(IConfiguration config, IPersistenceService persistence)
 	{
@@ -154,15 +155,30 @@ public class ScriptConfig
 				return collisions[^1];
 			})
 			.ToDictionary(x => x.Alias is (null or "*") ? string.Empty : x.Alias, x => x.Repo.ToLowerInvariant());
+		BambooMappings = config.GetSection(nameof(BambooMappings)).GetChildren()
+			.SelectMany(x => x.Value!.Split(',', StringSplitOptions.TrimEntries).Select(y => new { ProjectTask = x.Key, GithubKey = y }))
+			.GroupBy(x => x.GithubKey, (k, g) =>
+			{
+				var collisions = g.ToArray();
+				if (collisions.Length > 1)
+				{
+					Util.WithStyle($"warn: github project '{k}' is mapped to multiple bamboo project\task: {string.Join(", ", collisions.Select(x => x.ProjectTask))} (last one win)", "color: orange").Dump();
+				}
+				
+				return collisions[^1];
+			})
+			.ToDictionary(x => x.GithubKey is (null or "*") ? string.Empty : x.GithubKey, x => x.ProjectTask);
 	}
 }
-public record ScriptSecrets(string? HarvestAccountID, [property: JsonConverter(typeof(SecureStringConverter))] SecureString? HarvestPAT)
+public record ScriptSecrets(
+	string? BambooUserID, [property: JsonConverter(typeof(SecureStringConverter))] SecureString? BambooApiKey
+)
 {
 	public static ScriptSecrets Empty => new(null, null);
-	public bool IsValid() => HarvestAccountID?.Length >= 0 && HarvestPAT?.Length >= 0;
+	public bool IsValid() => BambooUserID?.Length >= 0 && BambooApiKey?.Length >= 0;
 
-	public record DeclassifiedScriptSecrets(string? HarvestAccountID, MaskedNotSoSecureString? HarvestPAT);
-	public DeclassifiedScriptSecrets Declassify() => new(HarvestAccountID, new(HarvestPAT));
+	public record DeclassifiedScriptSecrets(string? BambooUserID, MaskedNotSoSecureString? BambooApiKey);
+	public DeclassifiedScriptSecrets Declassify() => new(BambooUserID, new(BambooApiKey));
 }
 
 public sealed class MaskedNotSoSecureString
